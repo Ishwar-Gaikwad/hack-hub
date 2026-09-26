@@ -5,6 +5,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import config from './config/index.js';
 import healthRouter from './routes/health.routes.js';
+import authRouter from './routes/auth.routes.js';
+import eventRouter from './routes/event.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +36,12 @@ if (!config.isTest) {
 // Health check routes
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
+
+// Authentication & role routes
+app.use('/api/auth', authRouter);
+
+// Event management routes (Events, Tracks, Prizes)
+app.use('/api/events', eventRouter);
 
 // Serve static frontend assets if built
 const clientDistPath = path.resolve(__dirname, '../../client/dist');

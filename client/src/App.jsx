@@ -1,5 +1,7 @@
 import React from 'react';
 import HealthStatus from './components/HealthStatus';
+import AuthTester from './components/AuthTester';
+import EventTester from './components/EventTester';
 import { Layers, ShieldCheck, Check, Terminal, Cpu } from 'lucide-react';
 
 export default function App() {
@@ -15,7 +17,7 @@ export default function App() {
             <h1 className="brand-title">HackHub</h1>
             <div className="brand-subtitle">
               <span>MERN Hackathon Management Platform</span>
-              <span className="badge-tag">T1-01 Foundation</span>
+              <span className="badge-tag">T1-03 Event Management</span>
             </div>
           </div>
         </div>
@@ -32,6 +34,12 @@ export default function App() {
       {/* Main Health & Persistence Status */}
       <main>
         <HealthStatus />
+
+        {/* T1-02 Authentication & RBAC */}
+        <AuthTester />
+
+        {/* T1-03 Event Management, Tracks & Prizes */}
+        <EventTester />
 
         {/* Foundation & Architecture Overview */}
         <div className="checklist-section" style={{ marginTop: '2rem' }}>
