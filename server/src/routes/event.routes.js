@@ -15,13 +15,19 @@ import {
   getPrizesByEvent,
   updatePrize
 } from '../controllers/prize.controller.js';
+import {
+  createTeam,
+  getTeamsByEvent
+} from '../controllers/team.controller.js';
+import { createProject, getProjects } from '../controllers/project.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/role.middleware.js';
 
 const router = Router();
 
-// Middleware shortcut for organizer and admin authorization
+// Middleware shortcuts
 const requireStaff = [authenticate, requireRole('organizer', 'admin')];
+const requireParticipant = [authenticate, requireRole('participant')];
 
 // Event endpoints
 router.get('/', getEvents);
@@ -39,4 +45,13 @@ router.get('/:eventId/prizes', getPrizesByEvent);
 router.post('/:eventId/prizes', ...requireStaff, createPrize);
 router.put('/:eventId/prizes/:prizeId', ...requireStaff, updatePrize);
 
+// Team endpoints (nested under event)
+router.get('/:eventId/teams', getTeamsByEvent);
+router.post('/:eventId/teams', ...requireParticipant, createTeam);
+
+// Project endpoints (nested under event)
+router.get('/:eventId/projects', getProjects);
+router.post('/:eventId/projects', ...requireParticipant, createProject);
+
 export default router;
+

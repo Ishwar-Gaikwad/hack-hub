@@ -7,6 +7,9 @@ import config from './config/index.js';
 import healthRouter from './routes/health.routes.js';
 import authRouter from './routes/auth.routes.js';
 import eventRouter from './routes/event.routes.js';
+import teamRouter from './routes/team.routes.js';
+import inviteRouter from './routes/invite.routes.js';
+import projectRouter from './routes/project.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +45,13 @@ app.use('/api/auth', authRouter);
 
 // Event management routes (Events, Tracks, Prizes)
 app.use('/api/events', eventRouter);
+
+// Team formation & Invite routes
+app.use('/api/teams', teamRouter);
+app.use('/api/invites', inviteRouter);
+
+// Project submission & draft routes
+app.use('/api/projects', projectRouter);
 
 // Serve static frontend assets if built
 const clientDistPath = path.resolve(__dirname, '../../client/dist');

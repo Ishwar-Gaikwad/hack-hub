@@ -1,0 +1,51 @@
+# DOGFOOD 2026 Hackathon Management Platform Acceptance Configuration
+
+[dogfood]
+tier = "T1"
+name = "HackHub"
+version = "0.1.0"
+description = "Self-hostable MERN hackathon platform with zero external API dependencies"
+
+[portal]
+base_url = "http://localhost:5000"
+health_route = "/api/health"
+gallery_route = "/api/projects"
+
+[auth]
+login_route = "/api/auth/login"
+register_route = "/api/auth/register"
+me_route = "/api/auth/me"
+logout_route = "/api/auth/logout"
+
+[auth.organizer]
+email = "organizer@hackhub.local"
+password = "password123"
+role = "organizer"
+
+[auth.admin]
+email = "admin@hackhub.local"
+password = "password123"
+role = "admin"
+
+[auth.judge]
+email = "judge@hackhub.local"
+password = "password123"
+role = "judge"
+
+[auth.participant]
+email = "alice@hackhub.local"
+password = "password123"
+role = "participant"
+
+[routes]
+events = "/api/events"
+tracks = "/api/events/{eventId}/tracks"
+prizes = "/api/events/{eventId}/prizes"
+teams = "/api/events/{eventId}/teams"
+invites = "/api/teams/{teamId}/invites"
+join_team = "/api/teams/join"
+projects = "/api/projects"
+submit_project = "/api/projects/{projectId}/submit"
+gallery = "/api/projects"
+my_projects = "/api/projects/my-projects"
+my_teams = "/api/teams/my-teams"
