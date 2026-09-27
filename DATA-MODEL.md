@@ -115,6 +115,8 @@ erDiagram
   - `startDate`: (Date, required)
   - `submissionDeadline`: (Date, required — verified `startDate < submissionDeadline <= endDate`)
   - `endDate`: (Date, required)
+  - `votingOpenAt`: (Date, optional voting window start)
+  - `votingCloseAt`: (Date, optional voting window end)
   - `status`: (Enum: `draft`, `published`, `ended`, `closed`)
   - `createdBy`: (ObjectId ref `User`)
 
@@ -141,6 +143,61 @@ erDiagram
   - `status`: (Enum: `draft`, `submitted`)
   - `createdAt`, `updatedAt`: (Timestamps)
 
+### 2.7 Score (`Score` - T2 & T4)
+- **Collection**: `scores`
+- **Fields**:
+  - `judgeId`: (ObjectId ref `User`, required, indexed)
+  - `judgeRef`: (String, indexed)
+  - `eventId`: (ObjectId ref `Event`, indexed)
+  - `projectId`: (ObjectId ref `Project`, indexed)
+  - `projectRef`: (String, indexed)
+  - `criteria`: `{ functionality: Number(1..5), quality: Number(1..5), innovation: Number(1..5) }`
+  - `rawTotal`: (Number, unweighted total)
+  - `normalizedScore`: (Number, scaled 0..100)
+  - `comment`: (String)
+- **Indexes**: Compound index `{ judgeId: 1, projectId: 1 }`.
+
+### 2.8 Community Vote (`Vote` - T3)
+- **Collection**: `votes`
+- **Fields**:
+  - `eventId`: (ObjectId ref `Event`, required, indexed)
+  - `projectId`: (ObjectId ref `Project`, required, indexed)
+  - `voterId`: (ObjectId ref `User`, required, indexed)
+  - `createdAt`: (Date, default `Date.now`)
+- **Constraints**: Compound unique index `{ eventId: 1, projectId: 1, voterId: 1 }` strictly preventing duplicate voting attempts at database level.
+
+### 2.9 Project Comment (`Comment` - T3)
+- **Collection**: `comments`
+- **Fields**:
+  - `eventId`: (ObjectId ref `Event`, required, indexed)
+  - `projectId`: (ObjectId ref `Project`, required, indexed)
+  - `authorId`: (ObjectId ref `User`, required, indexed)
+  - `content`: (String, required, length 1..1000 characters, HTML sanitized against XSS)
+  - `createdAt`, `updatedAt`: (Timestamps)
+
+### 2.10 Audit Log (`AuditLog` - T3)
+- **Collection**: `audit_logs`
+- **Fields**:
+  - `eventId`: (ObjectId ref `Event`, indexed)
+  - `actorId`: (ObjectId ref `User`, optional)
+  - `action`: (String, required: `vote.created`, `vote.retracted`, `duplicate_vote.rejected`, `comment.created`, `comment.deleted`, `rate_limit.triggered`)
+  - `targetType`: (String: `vote`, `comment`, `project`, `auth`)
+  - `targetId`: (String)
+  - `details`: (Mixed JSON Object)
+  - `ipAddress`: (String)
+  - `timestamp`: (Date, indexed)
+
+### 2.11 Event Webhook (`Webhook` - T4)
+- **Collection**: `webhooks`
+- **Fields**:
+  - `eventId`: (ObjectId ref `Event`, required, indexed)
+  - `targetUrl`: (String, required, valid HTTP/HTTPS URL)
+  - `secret`: (String, required, used for HMAC-SHA256 signature computation)
+  - `subscribedEvents`: (Array of Strings: `submission.created`, `voting.started`, etc.)
+  - `active`: (Boolean, default `true`)
+  - `deliveryLogs`: (Array of `{ deliveryId, event, statusCode, success, error, attemptCount, timestamp }`)
+  - `createdAt`, `updatedAt`: (Timestamps)
+
 ---
 
 ## 3. Fixture Data Loading (`fixtures.json`)
@@ -157,7 +214,9 @@ The platform loads official benchmark data from `fixtures.json` located at the r
 
 - **Ingestion**:
   - Direct REST JSON endpoints for event creation, team formation, project drafting, and submission.
-  - Automatic validation checks for role authorization, object validity, and timeline compliance.
+  - Transactional bulk import (`POST /api/events/:eventId/bulk/import`) with atomic all-or-nothing validation preventing partial corrupt writes.
 - **Export**:
   - Public Project Gallery: `GET /projects` and `GET /api/projects` (unauthenticated, filtered for submitted projects only).
   - Organizer CSV Export (T2): `GET /api/export.csv` generating comma-separated reports of teams, projects, scores, and rankings.
+  - Full Event Archive (T4): `GET /api/events/:eventId/bulk/export/full` providing complete JSON data dumps for archival or migrations.
+  - Public Verifiable Judging Records (T4): `GET /api/events/:eventId/records/judging` delivering cryptographically signed manifests.

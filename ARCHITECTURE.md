@@ -15,52 +15,71 @@ HackHub uses a decoupled client-server architecture built entirely on open-sourc
 
 ```mermaid
 graph TD
-    User([Browser Client / API Consumer]) -->|HTTP Port 5000| NGINX[Express Application Server]
+    User([Browser Client / API Consumer / Webhook Receiver]) -->|HTTP Port 5000| NGINX[Express Application Server]
     
     subgraph Express Application [Node.js / Express Server]
-        AuthMW[Auth & RBAC Middleware]
-        HealthR[Health Check Router /health, /api/health]
-        EventsR[Events, Tracks & Prizes Router /api/events]
-        TeamsR[Team Formation & Invites Router /api/teams]
-        ProjectsR[Project Submission & Gallery Router /projects, /api/projects]
+        RateMW[Sliding-Window Rate Limiter]
+        AuthMW[Auth & Session Middleware]
+        RBACMW[RBAC Role Guard]
+        
+        HealthR[Health Router /health, /api/health]
+        OpenAPIR[OpenAPI & Docs Router /api/openapi.json, /api/docs]
+        VotingR[Community Voting Router /api/events/:id/voting, vote]
+        CommentsR[Comments Router /comments]
+        AuditR[Audit & Metrics Router /api/events/:id/audit]
+        WebhooksR[Webhook Dispatcher & Manager /api/events/:id/webhooks]
+        CertsR[Certificates Engine /api/events/:id/certificates]
+        RecordsR[Verifiable Records /records/judging, /verify]
+        EmbedR[Embeddable Gallery /embed/gallery/:id]
+        BulkR[Transactional Bulk Import/Export /bulk]
         StaticS[Static Frontend SPA Provider /client/dist]
     end
 
-    NGINX --> HealthR
-    NGINX --> AuthMW
-    NGINX --> StaticS
-    AuthMW --> EventsR
-    AuthMW --> TeamsR
-    AuthMW --> ProjectsR
+    NGINX --> RateMW
+    RateMW --> OpenAPIR
+    RateMW --> EmbedR
+    RateMW --> HealthR
+    RateMW --> StaticS
+    RateMW --> AuthMW
+    AuthMW --> RBACMW
+
+    RBACMW --> VotingR
+    RBACMW --> CommentsR
+    RBACMW --> AuditR
+    RBACMW --> WebhooksR
+    RBACMW --> CertsR
+    RBACMW --> RecordsR
+    RBACMW --> BulkR
 
     subgraph Persistence [Local Database]
         Mongo[(MongoDB 7.0 / mongo-data)]
     end
 
-    EventsR -->|Mongoose ODM| Mongo
-    TeamsR -->|Mongoose ODM| Mongo
-    ProjectsR -->|Mongoose ODM| Mongo
-    HealthR -->|Admin Ping & Connection Status| Mongo
+    VotingR -->|Mongoose ODM| Mongo
+    CommentsR -->|Mongoose ODM| Mongo
+    AuditR -->|Mongoose ODM| Mongo
+    WebhooksR -->|Mongoose ODM| Mongo
+    RecordsR -->|Mongoose ODM| Mongo
+    BulkR -->|Mongoose Transaction| Mongo
+    HealthR -->|Admin Ping| Mongo
 ```
 
 ---
 
-## 2. Major Components
+## 2. Major Subsystems & Modules
 
-### 2.1 Backend Core (`server/src/`)
-- **[app.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/app.js)**: Configures Express middleware (CORS, JSON body parsing, request logging), API routes, and serves production React assets from `client/dist`.
-- **[index.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/index.js)**: Handles deterministic application startup, verifies database connectivity, triggers fixture auto-seeding if empty, and manages graceful shutdowns on `SIGINT` / `SIGTERM`.
-- **[connection.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/db/connection.js)**: Manages MongoDB connection lifecycle, auto-reconnects, and status diagnostics (`getDBStatus`).
-- **[seed.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/db/seed.js)**: Bootstraps the platform using `fixtures.json`, creates long-lived authentication sessions for test identities (`organizer`, `judge_a`, `judge_b`, `participant`), and seeds fixture events and projects.
-
-### 2.2 Middleware & Security (`server/src/middleware/`)
-- **`auth.middleware.js`**: Enforces session token validity. Extracts Bearer or raw tokens from the `Authorization` or `x-session-token` headers and loads the authenticated user.
-- **`role.middleware.js`**: Enforces strict Role-Based Access Control (RBAC) across four roles: `admin`, `organizer`, `judge`, and `participant`.
-
-### 2.3 Frontend Client (`client/src/`)
-- **Single Page Application (SPA)**: Built with React 18, employing component-level state and URL hash routing (`#hackathons`, `#projects`, `#dashboard`, `#admin/developer`).
-- **Responsive Theme & UI**: Modern dark-mode interface with glassmorphic cards, responsive metric grids, accessible color contrast, and micro-animations.
-- **Diagnostics & Testing Suite**: Includes interactive test harnesses ([DeveloperDiagnosticsView.jsx](file:///c:/Users/aishw/DogFoodHack/hack-hub/client/src/views/DeveloperDiagnosticsView.jsx)) to verify health, gallery, auth, events, teams, and projects directly from the browser.
+### 2.1 Backend Subsystems (`server/src/`)
+- **[app.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/app.js)**: Configures Express middleware, security headers, rate limiting, and mounts all REST, OpenAPI, Embed, and Static routes.
+- **[voting.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/voting.controller.js)**: Manages voting window validation, vote casting/retraction, duplicate prevention via compound DB unique index, server-side tally privacy during open voting, and Mulberry32 PRNG randomized project ordering.
+- **[comment.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/comment.controller.js)**: Manages project comments, length boundaries, HTML/script sanitization against XSS, author deletion, and organizer/admin moderation.
+- **[rate-limit.middleware.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/middleware/rate-limit.middleware.js)**: In-memory sliding-window rate limiter returning HTTP `429 Too Many Requests` with `Retry-After` headers.
+- **[audit.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/audit.controller.js)**: Records security and participation audit logs (`vote.created`, `duplicate_vote.rejected`, `comment.created`, etc.) and delivers organizer analytics.
+- **[openapi.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/openapi.controller.js)**: Serves full OpenAPI 3.0 specification (`/api/openapi.json`) and renders an offline-ready interactive documentation UI (`/api/docs`).
+- **[webhook.service.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/services/webhook.service.js)**: Dispatches signed HTTP POST payloads with `X-HackHub-Signature` (`HMAC-SHA256`) and handles bounded retry attempts.
+- **[record.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/record.controller.js)**: Generates verifiable judging record manifests with deep canonicalization and anonymized judge pseudonyms (`JDG-XXXXXXXX`), and provides cryptographic verification.
+- **[certificate.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/certificate.controller.js)**: Issues verifiable participation, winner, and judge certificates with SHA-256 integrity hashes in JSON or printable HTML.
+- **[embed.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/embed.controller.js)**: Delivers an embeddable, standalone HTML iframe gallery and an open CORS JSON API for external widgets.
+- **[bulk.controller.js](file:///c:/Users/aishw/DogFoodHack/hack-hub/server/src/controllers/bulk.controller.js)**: Executes transactional bulk imports with all-or-nothing validation, plus JSON and CSV exports.
 
 ---
 
@@ -69,25 +88,29 @@ graph TD
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Judge as Evaluator / Checker
+    actor Voter as Authenticated Voter
     participant Express as Express Server
-    participant Middleware as Auth / Deadline Guard
+    participant RateLimiter as Rate Limit Guard
+    participant Window as Voting Window Check
     participant DB as MongoDB
 
-    Note over Judge,DB: T1 Public Gallery Access
-    Judge->>Express: GET /projects
-    Express->>DB: Query Projects (status: "submitted")
-    DB-->>Express: Return Submitted Projects
-    Express-->>Judge: HTTP 200 OK + JSON Projects List
-
-    Note over Judge,DB: T1 Closed Event Deadline Rejection
-    Judge->>Express: POST /projects/new (Authorization: Bearer participant)
-    Express->>Middleware: Validate Participant Token
-    Middleware-->>Express: Token OK (Participant User)
-    Express->>DB: Fetch Active / Target Event
-    DB-->>Express: Event Details (submissions_close = 2026-03-01)
-    Express->>Express: Check: now > submissions_close
-    Express-->>Judge: HTTP 400 Bad Request (DeadlineExceeded)
+    Note over Voter,DB: T3 Community Voting with Server-Side Privacy
+    Voter->>Express: POST /api/events/:id/projects/:id/vote
+    Express->>RateLimiter: Check Sliding-Window Limits
+    RateLimiter-->>Express: Limit OK
+    Express->>Window: Check: votingOpenAt <= now <= votingCloseAt
+    Window-->>Express: Window Active
+    Express->>DB: Insert Vote (Unique index: eventId + projectId + voterId)
+    DB-->>Express: Vote Saved
+    Express-->>Voter: HTTP 201 Created (Tally hidden while voting is open)
+    
+    Note over Voter,DB: T4 Verifiable Judging Manifest Verification
+    actor Public as Public Auditor
+    Public->>Express: POST /api/events/:id/records/verify (manifest, signature)
+    Express->>Express: Canonicalize Manifest Object
+    Express->>Express: Compute HMAC-SHA256 with System Key
+    Express->>Express: TimingSafeEqual Comparison
+    Express-->>Public: HTTP 200 OK (verified: true)
 ```
 
 ---
@@ -98,11 +121,13 @@ sequenceDiagram
    - Authentication is implemented via an internal database session store (`Session` model) rather than third-party SaaS auth (Auth0, Clerk, Firebase).
    - Test suites leverage `mongodb-memory-server` to run 100% offline without requiring internet access or a running external database daemon.
 
-2. **Server-Side Deadline Enforcement**:
-   - Deadline validation is strictly enforced on the server before database mutation. Even if client-side checks are bypassed, late project submissions or creations are rejected with HTTP 4xx.
+2. **Server-Side Deadline & Tally Enforcement**:
+   - Voting tallies and rank orders are strictly hidden server-side from non-staff participants while voting is active, preventing vote bandwagons or early leakages.
+   - Project submission deadlines and voting windows are enforced before any DB mutation.
 
-3. **Deterministic Seed & Auto-Bootstrapping**:
-   - The application automatically detects an unseeded database on startup and seeds standard fixtures (`fixtures.json`), ensuring `docker compose up` starts immediately in an evaluated, operational state.
+3. **Cryptographic Integrity & Privacy**:
+   - Judging manifests are digitally signed using HMAC-SHA256 after deep JSON canonicalization.
+   - Individual judge identities are anonymized to pseudonyms (`JDG-XXXXXXXX`), protecting judge privacy while ensuring public auditability.
 
 4. **Multi-Stage Containerization**:
    - The [Dockerfile](file:///c:/Users/aishw/DogFoodHack/hack-hub/Dockerfile) compiles the Vite frontend in Stage 1 and bundles only production runtime dependencies with Express in Stage 2, resulting in a lightweight, self-contained container.

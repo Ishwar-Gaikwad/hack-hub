@@ -66,4 +66,34 @@ Authorization: Bearer <organizer_token>
 ```
 The endpoint returns:
 - Standard `text/csv` format.
-- Columns: `Project ID, Project Title, Team Name, Track, Raw Average, Normalized Score, Final Rank`.
+- Columns: `Project ID, Project Title, Team Name, Track, Status, Reviews Count, Average Score`.
+
+---
+
+## 6. Verifiable Judging Records & Cryptographic Verification (T4)
+
+To guarantee public trust without compromising judge safety or voting privacy, HackHub introduces cryptographically verifiable judging records:
+
+### 6.1 Manifest Generation (`GET /api/events/:eventId/records/judging`)
+- Compiles all project evaluations, criteria breakdowns, and average normalized scores into a canonical manifest.
+- **Judge Anonymization**: Individual judge IDs and email addresses are replaced with deterministic 8-character pseudonyms (`JDG-XXXXXXXX`) computed via SHA-256 with the platform system key.
+  $$\text{Pseudonym} = \text{JDG-} + \text{SHA256}(\text{judgeId} + \text{systemKey})[0..7]$$
+  This prevents targeted harassment or retaliatory bias while ensuring the community can verify that multiple distinct judges evaluated each project.
+
+### 6.2 Cryptographic Signing
+- The manifest undergoes recursive canonicalization (sorting all nested object keys deterministically).
+- An HMAC-SHA256 signature is calculated across the canonicalized payload using the platform signing key:
+  $$\text{Signature} = \text{HMAC-SHA256}(\text{CanonicalizedManifest}, \text{systemSigningKey})$$
+- The signature is delivered alongside the manifest in the HTTP response.
+
+### 6.3 Public Verification (`POST /api/events/:eventId/records/verify`)
+- Any third-party auditor, participant, or platform can submit the manifest and signature for verification.
+- The server re-canonicalizes the manifest, recomputes the HMAC-SHA256 signature, and performs a constant-time `timingSafeEqual` comparison.
+- Any modification to scores, ranks, judge counts, or project titles results in immediate rejection (`400 Bad Request`, `verified: false`).
+
+---
+
+## 7. Missing Scores & Reviewer Discrepancy Handling
+
+1. **Missing Reviews**: If a project receives fewer reviews than the target allocation, its ranking is computed using the average of submitted reviews with an explicit `evaluationCount` flag.
+2. **Reviewer Discrepancies**: If two judges differ by more than 2.0 on a 5-point scale on the same criterion, the organizer dashboard highlights the evaluation for review prior to certificate issuance or final result publishing.
