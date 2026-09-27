@@ -10,10 +10,14 @@ import Track from '../models/track.model.js';
  */
 export async function createProject(req, res) {
   try {
-    const eventId = req.params.eventId || req.body.eventId;
-    const { teamId, trackId, title, description, repositoryUrl } = req.body;
+    let eventId = req.params.eventId || req.body?.eventId;
+    if (!eventId) {
+      const defaultEvent = await Event.findOne({}).sort({ createdAt: -1 });
+      if (defaultEvent) {
+        eventId = defaultEvent._id.toString();
+      }
+    }
 
-    // Validate ObjectIds
     if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({
         error: 'BadRequest',
@@ -21,6 +25,26 @@ export async function createProject(req, res) {
       });
     }
 
+    // Verify Event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        error: 'NotFound',
+        message: 'Event not found.'
+      });
+    }
+
+    // Enforce submission deadline on project creation immediately
+    if (event.submissionDeadline && new Date().getTime() > new Date(event.submissionDeadline).getTime()) {
+      return res.status(400).json({
+        error: 'DeadlineExceeded',
+        message: 'The submission deadline for this event has passed. Project creation is closed.'
+      });
+    }
+
+    const { teamId, trackId, title, description, repositoryUrl } = req.body || {};
+
+    // Validate ObjectIds
     if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
       return res.status(400).json({
         error: 'BadRequest',
@@ -39,15 +63,6 @@ export async function createProject(req, res) {
       return res.status(400).json({
         error: 'BadRequest',
         message: 'Project title is required and must be at least 2 characters long.'
-      });
-    }
-
-    // Verify Event exists
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({
-        error: 'NotFound',
-        message: 'Event not found.'
       });
     }
 
@@ -99,14 +114,6 @@ export async function createProject(req, res) {
       return res.status(409).json({
         error: 'Conflict',
         message: 'A project already exists for this team in this event.'
-      });
-    }
-
-    // Enforce submission deadline on project creation
-    if (event.submissionDeadline && new Date().getTime() > new Date(event.submissionDeadline).getTime()) {
-      return res.status(400).json({
-        error: 'DeadlineExceeded',
-        message: 'The submission deadline for this event has passed. Project creation is closed.'
       });
     }
 

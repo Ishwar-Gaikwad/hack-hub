@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-export const EVENT_STATUSES = ['draft', 'published', 'active', 'ended'];
+export const EVENT_STATUSES = ['draft', 'published', 'active', 'ended', 'closed'];
 
 const eventSchema = new mongoose.Schema(
   {

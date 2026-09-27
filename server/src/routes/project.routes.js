@@ -21,6 +21,7 @@ router.get('/gallery', getProjects);
 // Project endpoints
 router.get('/my-projects', authenticate, getMyProjects);
 router.post('/', ...requireParticipant, createProject);
+router.post('/new', ...requireParticipant, createProject);
 router.get('/:id', getProjectById);
 router.put('/:id', ...requireParticipant, updateProject);
 router.post('/:id/submit', ...requireParticipant, submitProject);

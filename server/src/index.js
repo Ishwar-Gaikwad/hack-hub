@@ -1,6 +1,8 @@
 import app from './app.js';
 import config from './config/index.js';
 import { connectDB, disconnectDB } from './db/connection.js';
+import User from './models/user.model.js';
+import { seedDatabase } from './db/seed.js';
 
 let server;
 
@@ -16,6 +18,17 @@ async function startServer() {
       console.error(`[Server] Ensure MongoDB is running and reachable at ${config.database.uri}`);
       console.error(`[Server] Error details: ${dbError.message}`);
       process.exit(1);
+    }
+
+    // Auto-seed if database is empty to guarantee a seeded portal on docker compose up
+    try {
+      const userCount = await User.countDocuments();
+      if (userCount === 0) {
+        console.log('[Server] Database is empty. Seeding official fixtures...');
+        await seedDatabase();
+      }
+    } catch (seedErr) {
+      console.warn('[Server] Auto-seed check warning:', seedErr.message);
     }
 
     // Start HTTP server

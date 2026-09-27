@@ -1,0 +1,72 @@
+{
+  "event": {
+    "name": "DOGFOOD 2026 Global AI Hackathon",
+    "description": "The premier benchmark hackathon event for autonomous agents and developer tooling.",
+    "start_date": "2026-01-01T00:00:00.000Z",
+    "submissions_close": "2026-03-01T18:00:00.000Z",
+    "end_date": "2026-03-05T00:00:00.000Z",
+    "status": "closed"
+  },
+  "tracks": [
+    {
+      "name": "Autonomous Agents & Multi-Agent Systems",
+      "description": "Create multi-agent collaborative workflows and self-healing systems."
+    },
+    {
+      "name": "Developer Tooling & Infrastructure",
+      "description": "Build fast, deterministic developer tooling and local infrastructure."
+    },
+    {
+      "name": "Computer Vision & Multimodal AI",
+      "description": "Deploy real-time computer vision and multimodal reasoning systems."
+    }
+  ],
+  "prizes": [
+    {
+      "name": "Grand Champion Prize",
+      "value": "$10,000 USD",
+      "description": "Awarded to the most impactful overall project."
+    },
+    {
+      "name": "Best Agent Architecture",
+      "value": "$5,000 USD",
+      "description": "Awarded to the project with the best multi-agent design."
+    }
+  ],
+  "users": [
+    {
+      "email": "organizer@hackhub.local",
+      "role": "organizer",
+      "name": "Lead Organizer"
+    },
+    {
+      "email": "judge_a@hackhub.local",
+      "role": "judge",
+      "name": "Judge Alice"
+    },
+    {
+      "email": "judge_b@hackhub.local",
+      "role": "judge",
+      "name": "Judge Bob"
+    },
+    {
+      "email": "participant@hackhub.local",
+      "role": "participant",
+      "name": "Alice Participant"
+    }
+  ],
+  "projects": [
+    {
+      "title": "HackHub Autonomous Workflow Orchestrator",
+      "description": "Self-hosted autonomous agent workflow orchestration engine with multi-agent consensus and deterministic self-healing.",
+      "status": "submitted",
+      "repositoryUrl": "https://github.com/agentic-pioneers/hackhub-orchestrator"
+    },
+    {
+      "title": "Visionary Defect Inspector",
+      "description": "High-speed edge computer vision defect inspector for automated manufacturing lines.",
+      "status": "submitted",
+      "repositoryUrl": "https://github.com/solo-innovators/defect-inspector"
+    }
+  ]
+}

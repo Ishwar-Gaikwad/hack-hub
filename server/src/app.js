@@ -51,6 +51,7 @@ app.use('/api/teams', teamRouter);
 app.use('/api/invites', inviteRouter);
 
 // Project submission & draft routes
+app.use('/projects', projectRouter);
 app.use('/api/projects', projectRouter);
 
 // Serve static frontend assets if built
@@ -58,7 +59,7 @@ const clientDistPath = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) {
+    if (req.path.startsWith('/api') || req.path === '/projects' || req.path.startsWith('/projects/')) {
       return next();
     }
     res.sendFile(path.join(clientDistPath, 'index.html'));

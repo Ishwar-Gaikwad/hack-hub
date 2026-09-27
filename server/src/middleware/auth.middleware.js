@@ -5,8 +5,11 @@ import Session from '../models/session.model.js';
  */
 export function extractToken(req) {
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authHeader.substring(7).trim();
+  if (authHeader) {
+    if (authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7).trim();
+    }
+    return authHeader.trim();
   }
 
   const customHeader = req.headers['x-session-token'];
