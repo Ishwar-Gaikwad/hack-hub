@@ -10,6 +10,9 @@ import eventRouter from './routes/event.routes.js';
 import teamRouter from './routes/team.routes.js';
 import inviteRouter from './routes/invite.routes.js';
 import projectRouter from './routes/project.routes.js';
+import judgingRouter from './routes/judging.routes.js';
+import { exportCSV } from './controllers/judging.controller.js';
+import { authenticate } from './middleware/auth.middleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +56,10 @@ app.use('/api/invites', inviteRouter);
 // Project submission & draft routes
 app.use('/projects', projectRouter);
 app.use('/api/projects', projectRouter);
+
+// Judging & Evaluation routes (T2)
+app.use('/api/judge', judgingRouter);
+app.get('/api/export.csv', authenticate, exportCSV);
 
 // Serve static frontend assets if built
 const clientDistPath = path.resolve(__dirname, '../../client/dist');

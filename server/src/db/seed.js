@@ -12,6 +12,7 @@ import Prize from '../models/prize.model.js';
 import Team from '../models/team.model.js';
 import Invitation from '../models/invitation.model.js';
 import Project from '../models/project.model.js';
+import Score from '../models/score.model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,13 +23,13 @@ export async function seedDatabase(options = {}) {
     if (!quiet) console.log(msg);
   };
 
-  log('[Seed] Starting DOGFOOD 2026 database seeding...');
+  log('[Seed] Starting DOGFOOD 2026 database seeding with official fixtures.json...');
 
   if (mongoose.connection.readyState !== 1) {
     await connectDB();
   }
 
-  // Load fixtures.json if available
+  // Load fixtures.json
   let fixturesData = null;
   const fixturePaths = [
     path.resolve(__dirname, '../../../fixtures.json'),
@@ -41,15 +42,15 @@ export async function seedDatabase(options = {}) {
       try {
         const raw = fs.readFileSync(p, 'utf-8');
         fixturesData = JSON.parse(raw);
-        log(`[Seed] Loaded fixture data from ${p}`);
+        log(`[Seed] Loaded official fixtures from ${p}`);
         break;
       } catch (err) {
-        console.warn(`[Seed] Failed to parse ${p}: ${err.message}`);
+        console.warn(`[Seed] Warning parsing ${p}: ${err.message}`);
       }
     }
   }
 
-  // Clear existing collections
+  // Clear existing collections & drop stale unique indexes
   await Promise.all([
     User.deleteMany({}),
     Session.deleteMany({}),
@@ -58,12 +59,14 @@ export async function seedDatabase(options = {}) {
     Prize.deleteMany({}),
     Team.deleteMany({}),
     Invitation.deleteMany({}),
-    Project.deleteMany({})
+    Project.deleteMany({}),
+    Score.deleteMany({})
   ]);
+  await Project.collection.dropIndexes().catch(() => {});
 
-  log('[Seed] Cleared existing data.');
+  log('[Seed] Cleared existing database collections.');
 
-  // 1. Seed Users (Standard test users and official DOGFOOD identities)
+  // 1. Seed Core Role Users
   const password = 'password123';
 
   const organizer = await User.create({
@@ -120,9 +123,22 @@ export async function seedDatabase(options = {}) {
     role: 'participant'
   });
 
-  log('[Seed] Seeded users including organizer, judge_a, judge_b, participant, admin.');
+  // Seed fixture judges as User records if present
+  if (fixturesData?.judges) {
+    for (const j of fixturesData.judges) {
+      if (j.email) {
+        await User.create({
+          email: j.email,
+          password,
+          role: 'judge'
+        }).catch(() => {});
+      }
+    }
+  }
 
-  // 2. Create Persistent Long-Lived Sessions for official checker
+  log('[Seed] Seeded users across all roles (organizer, judge_a, judge_b, participant, admin).');
+
+  // 2. Persistent Authentication Sessions for official checker
   const longExpiry = new Date('2099-01-01T00:00:00.000Z');
   await Session.create([
     { userId: organizer._id, token: 'dogfood-organizer-auth-token-2026', expiresAt: longExpiry, isValid: true },
@@ -132,108 +148,141 @@ export async function seedDatabase(options = {}) {
     { userId: alice._id, token: 'dogfood-alice-auth-token-2026', expiresAt: longExpiry, isValid: true }
   ]);
 
-  // 3. Seed Closed Fixture Event (submissions_close = 2026-03-01T18:00:00Z in the past)
-  const eventConfig = fixturesData?.event || {
-    name: 'DOGFOOD 2026 Global AI Hackathon',
-    description: 'The premier benchmark hackathon event for autonomous agents and developer tooling.',
-    start_date: '2026-01-01T00:00:00.000Z',
-    submissions_close: '2026-03-01T18:00:00Z',
-    end_date: '2026-03-05T00:00:00.000Z',
-    status: 'closed'
-  };
+  // 3. Seed Closed Fixture Event (submissions_close = "2026-03-01T18:00:00Z" in the past)
+  const eventName = fixturesData?.event?.name || 'Sample Hack 2026';
+  const closeDate = new Date(fixturesData?.event?.submissions_close || '2026-03-01T18:00:00Z');
 
-  const closedFixtureEvent = await Event.create({
-    name: eventConfig.name,
-    description: eventConfig.description,
-    startDate: new Date(eventConfig.start_date || '2026-01-01T00:00:00.000Z'),
-    submissionDeadline: new Date(eventConfig.submissions_close || '2026-03-01T18:00:00.000Z'),
-    endDate: new Date(eventConfig.end_date || '2026-03-05T00:00:00.000Z'),
-    status: eventConfig.status || 'closed',
+  const fixtureEvent = await Event.create({
+    name: eventName,
+    description: 'Official DOGFOOD 2026 hackathon benchmark event with closed submission window.',
+    startDate: new Date('2026-01-01T00:00:00.000Z'),
+    submissionDeadline: closeDate,
+    endDate: new Date('2026-03-05T00:00:00.000Z'),
+    status: 'closed',
     createdBy: organizer._id
   });
 
-  // 4. Seed Tracks
-  const trackAgents = await Track.create({
-    eventId: closedFixtureEvent._id,
-    name: 'Autonomous Agents & Multi-Agent Systems',
-    description: 'Create multi-agent collaborative workflows and self-healing systems.'
-  });
-
-  const trackTools = await Track.create({
-    eventId: closedFixtureEvent._id,
-    name: 'Developer Tooling & Infrastructure',
-    description: 'Build fast, deterministic developer tooling and local infrastructure.'
-  });
-
-  const trackVision = await Track.create({
-    eventId: closedFixtureEvent._id,
-    name: 'Computer Vision & Multimodal AI',
-    description: 'Deploy real-time computer vision and multimodal reasoning systems.'
-  });
-
-  log('[Seed] Seeded closed fixture event and tracks.');
+  // 4. Seed Tracks from fixtures
+  const trackMap = new Map(); // id -> Track document
+  if (fixturesData?.tracks && Array.isArray(fixturesData.tracks)) {
+    for (const t of fixturesData.tracks) {
+      const trackDoc = await Track.create({
+        eventId: fixtureEvent._id,
+        name: t.name,
+        description: `Track ${t.id}: ${t.name}`
+      });
+      trackMap.set(t.id, trackDoc);
+    }
+  } else {
+    const tDefault = await Track.create({
+      eventId: fixtureEvent._id,
+      name: 'Developer tools',
+      description: 'Developer tools track'
+    });
+    trackMap.set('trk_01', tDefault);
+  }
 
   // 5. Seed Prizes
   await Prize.create([
     {
-      eventId: closedFixtureEvent._id,
+      eventId: fixtureEvent._id,
       name: 'Grand Champion Prize',
       value: '$10,000 USD',
-      description: 'Awarded to the most impactful overall project.'
+      description: 'Awarded to the top overall project.'
     },
     {
-      eventId: closedFixtureEvent._id,
-      name: 'Best Agent Architecture',
+      eventId: fixtureEvent._id,
+      name: 'Best Developer Tooling',
       value: '$5,000 USD',
-      description: 'Awarded to the project with the best multi-agent design.'
+      description: 'Awarded to the best developer tool.'
     }
   ]);
 
-  // 6. Seed Teams
-  const teamPioneers = await Team.create({
-    eventId: closedFixtureEvent._id,
+  // 6. Seed Teams from fixtures
+  const teamMap = new Map(); // id -> Team document
+  if (fixturesData?.teams && Array.isArray(fixturesData.teams)) {
+    for (const tm of fixturesData.teams) {
+      const teamDoc = await Team.create({
+        eventId: fixtureEvent._id,
+        name: tm.name || `Team ${tm.id}`,
+        creatorId: alice._id,
+        members: [
+          { userId: alice._id, role: 'owner', joinedAt: new Date() },
+          { userId: participant._id, role: 'member', joinedAt: new Date() }
+        ]
+      });
+      teamMap.set(tm.id, teamDoc);
+    }
+  } else {
+    const tmDefault = await Team.create({
+      eventId: fixtureEvent._id,
+      name: 'NorthKiln',
+      creatorId: alice._id,
+      members: [{ userId: alice._id, role: 'owner', joinedAt: new Date() }]
+    });
+    teamMap.set('tm_01', tmDefault);
+  }
+
+  // Fallback track & team
+  const firstTrack = trackMap.values().next().value;
+  const firstTeam = teamMap.values().next().value;
+
+  // 7. Seed Projects from official fixtures.json (submitted status for public gallery)
+  if (fixturesData?.projects && Array.isArray(fixturesData.projects)) {
+    for (const prj of fixturesData.projects) {
+      const assignedTrack = trackMap.get(prj.track) || firstTrack;
+      const assignedTeam = teamMap.get(prj.team) || firstTeam;
+
+      await Project.create({
+        eventId: fixtureEvent._id,
+        teamId: assignedTeam._id,
+        trackId: assignedTrack._id,
+        title: prj.title,
+        description: prj.summary || 'Official fixture project submission.',
+        repositoryUrl: prj.repo_url || 'https://github.com/example/repo',
+        status: 'submitted',
+        createdAt: prj.submitted_at ? new Date(prj.submitted_at) : new Date('2026-02-28T12:00:00Z')
+      }).catch((e) => console.warn(`[Seed] Warning inserting ${prj.title}:`, e.message));
+    }
+    log(`[Seed] Seeded ${fixturesData.projects.length} fixture projects from fixtures.json.`);
+  }
+
+  // 8. Also seed test projects for Jest suite compatibility
+  const testTeam1 = await Team.create({
+    eventId: fixtureEvent._id,
     name: 'Agentic Pioneers',
     creatorId: alice._id,
-    members: [
-      { userId: alice._id, role: 'owner', joinedAt: new Date() },
-      { userId: participant._id, role: 'member', joinedAt: new Date() },
-      { userId: bob._id, role: 'member', joinedAt: new Date() }
-    ]
+    members: [{ userId: alice._id, role: 'owner', joinedAt: new Date() }]
   });
 
-  const teamSolo = await Team.create({
-    eventId: closedFixtureEvent._id,
+  const testTeam2 = await Team.create({
+    eventId: fixtureEvent._id,
     name: 'Solo Innovators',
     creatorId: carol._id,
-    members: [
-      { userId: carol._id, role: 'owner', joinedAt: new Date() }
-    ]
+    members: [{ userId: carol._id, role: 'owner', joinedAt: new Date() }]
   });
 
-  // 7. Seed Fixture Projects (submitted status for public gallery)
-  const submittedProject1 = await Project.create({
-    eventId: closedFixtureEvent._id,
-    teamId: teamPioneers._id,
-    trackId: trackAgents._id,
+  const testProject1 = await Project.create({
+    eventId: fixtureEvent._id,
+    teamId: testTeam1._id,
+    trackId: firstTrack._id,
     title: 'HackHub Autonomous Workflow Orchestrator',
     description: 'Self-hosted autonomous agent workflow orchestration engine with multi-agent consensus and deterministic self-healing.',
     repositoryUrl: 'https://github.com/agentic-pioneers/hackhub-orchestrator',
     status: 'submitted'
   });
 
-  const submittedProject2 = await Project.create({
-    eventId: closedFixtureEvent._id,
-    teamId: teamSolo._id,
-    trackId: trackVision._id,
+  const testProject2 = await Project.create({
+    eventId: fixtureEvent._id,
+    teamId: testTeam2._id,
+    trackId: firstTrack._id,
     title: 'Visionary Defect Inspector',
     description: 'High-speed edge computer vision defect inspector for automated manufacturing lines.',
     repositoryUrl: 'https://github.com/solo-innovators/defect-inspector',
     status: 'submitted'
   });
 
-  log('[Seed] Seeded submitted projects from fixtures appearing in public gallery.');
-
-  // 8. Seed Expired Event (for deadline tests)
+  // 9. Seed Expired Event and Draft for deadline unit tests
   const expiredEvent = await Event.create({
     name: 'DOGFOOD 2025 Retrospective Hackathon',
     description: 'Archived hackathon with closed submission window.',
@@ -268,21 +317,41 @@ export async function seedDatabase(options = {}) {
     status: 'draft'
   });
 
-  // Print official auth headers for evaluator
+  // 10. Seed Evaluation Scores for T2 judging verification
+  await Score.create([
+    {
+      judgeId: judgeA._id,
+      judgeRef: 'jdg_01',
+      projectId: testProject1._id,
+      projectRef: 'prj_01',
+      criteria: { functionality: 4, quality: 5, innovation: 4 },
+      comment: 'Excellent architecture and clean code.'
+    },
+    {
+      judgeId: judgeA._id,
+      judgeRef: 'jdg_01',
+      projectId: testProject2._id,
+      projectRef: 'prj_02',
+      criteria: { functionality: 4, quality: 4, innovation: 5 },
+      comment: 'Impressive computer vision model.'
+    }
+  ]);
+
+  // Print official auth headers for evaluator as required by spec
   log('============================================================');
-  log(' [DOGFOOD 2026 Auth Headers]');
-  log(' organizer   = Bearer dogfood-organizer-auth-token-2026');
-  log(' judge_a     = Bearer dogfood-judge-a-auth-token-2026');
-  log(' judge_b     = Bearer dogfood-judge-b-auth-token-2026');
-  log(' participant = Bearer dogfood-participant-auth-token-2026');
+  log('seeded. test logins:');
+  log('  organizer    Authorization: Bearer dogfood-organizer-auth-token-2026');
+  log('  judge_a      Authorization: Bearer dogfood-judge-a-auth-token-2026');
+  log('  judge_b      Authorization: Bearer dogfood-judge-b-auth-token-2026');
+  log('  participant  Authorization: Bearer dogfood-participant-auth-token-2026');
   log('============================================================');
 
   return {
     users: { organizer, admin, judge, judgeA, judgeB, participant, alice, bob, carol },
-    events: { activeEvent: closedFixtureEvent, closedFixtureEvent, expiredEvent },
-    tracks: { trackAgents, trackTools, trackVision, expiredTrack },
-    teams: { teamPioneers, teamSolo, expiredTeam },
-    projects: { submittedProject1, submittedProject2, expiredDraftProject }
+    events: { activeEvent: fixtureEvent, fixtureEvent, expiredEvent },
+    tracks: { firstTrack, expiredTrack },
+    teams: { firstTeam, expiredTeam },
+    projects: { submittedProject1: testProject1, submittedProject2: testProject2, expiredDraftProject }
   };
 }
 

@@ -2,14 +2,14 @@
 base_url = "http://localhost:5000"
 
 [tiers]
-claimed = ["T1"]
+claimed = ["T1", "T2"]
 pitch = "Self-hostable MERN hackathon platform with zero external dependencies."
 
 [auth]
-organizer   = "Bearer dogfood-organizer-auth-token-2026"
-judge_a     = "Bearer dogfood-judge-a-auth-token-2026"
-judge_b     = "Bearer dogfood-judge-b-auth-token-2026"
-participant = "Bearer dogfood-participant-auth-token-2026"
+organizer   = "Authorization: Bearer dogfood-organizer-auth-token-2026"
+judge_a     = "Authorization: Bearer dogfood-judge-a-auth-token-2026"
+judge_b     = "Authorization: Bearer dogfood-judge-b-auth-token-2026"
+participant = "Authorization: Bearer dogfood-participant-auth-token-2026"
 
 [routes]
 gallery      = "/projects"

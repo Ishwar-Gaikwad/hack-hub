@@ -59,8 +59,8 @@ const projectSchema = new mongoose.Schema(
   }
 );
 
-// One project per team per event constraint
-projectSchema.index({ eventId: 1, teamId: 1 }, { unique: true });
+// Index for efficient event and team project queries
+projectSchema.index({ eventId: 1, teamId: 1 });
 
 const Project = mongoose.model('Project', projectSchema);
 

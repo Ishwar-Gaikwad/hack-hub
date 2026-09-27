@@ -17,6 +17,14 @@ export function extractToken(req) {
     return customHeader.trim();
   }
 
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const match = cookieHeader.match(/session=([^;]+)/);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+
   return null;
 }
 
