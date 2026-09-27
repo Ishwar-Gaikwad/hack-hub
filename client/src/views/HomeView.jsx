@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, Clock } from 'lucide-react';
 import EventDetailModal from '../components/EventDetailModal';
 
@@ -6,6 +6,57 @@ export default function HomeView({ onNavigate, onOpenAuth }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const heroRef = useRef(null);
+
+  useEffect(() => {
+    const hero = heroRef.current;
+    if (!hero) return undefined;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame = null;
+
+    const updateProgress = () => {
+      frame = null;
+      if (reducedMotion.matches) {
+        hero.style.setProperty('--hero-scroll-progress', '0');
+        return;
+      }
+
+      const { top, height } = hero.getBoundingClientRect();
+      const range = Math.max(window.innerHeight + height, 1);
+      const progress = Math.min(1, Math.max(0, (window.innerHeight - top) / range));
+      hero.style.setProperty('--hero-scroll-progress', progress.toFixed(3));
+    };
+
+    const requestProgressUpdate = () => {
+      if (frame === null) frame = window.requestAnimationFrame(updateProgress);
+    };
+
+    const handleMotionPreference = () => {
+      if (reducedMotion.matches) {
+        window.removeEventListener('scroll', requestProgressUpdate);
+        window.removeEventListener('resize', requestProgressUpdate);
+        if (frame !== null) window.cancelAnimationFrame(frame);
+        frame = null;
+        hero.style.setProperty('--hero-scroll-progress', '0');
+        return;
+      }
+
+      window.addEventListener('scroll', requestProgressUpdate, { passive: true });
+      window.addEventListener('resize', requestProgressUpdate);
+      requestProgressUpdate();
+    };
+
+    handleMotionPreference();
+    reducedMotion.addEventListener('change', handleMotionPreference);
+
+    return () => {
+      window.removeEventListener('scroll', requestProgressUpdate);
+      window.removeEventListener('resize', requestProgressUpdate);
+      reducedMotion.removeEventListener('change', handleMotionPreference);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -36,14 +87,15 @@ export default function HomeView({ onNavigate, onOpenAuth }) {
   return (
     <div className="home-minimal-view">
       {/* Public product introduction and primary action */}
-      <section className="home-intro-section">
+      <section className="home-intro-section" ref={heroRef}>
+        <span className="home-hero-wordmark" aria-hidden="true">HACKHUB</span>
         <div className="home-hero-content">
-          <span className="home-eyebrow">Self-hosted hackathon management</span>
+          <span className="home-eyebrow">Open source · Self-hosted</span>
           <h1 className="home-headline">
-            The whole hackathon, from kickoff to showcase.
+            Build. <span className="home-headline-accent">Judge.</span> Ship.
           </h1>
           <p className="home-subheadline">
-            From event setup and team formation to project submissions and judging, HackHub brings participants, judges, and organizers through the full lifecycle on infrastructure you control.
+            A self-hostable hackathon platform to bring event organizers, participants, and judges through the full journey—from kickoff to results.
           </p>
           <div className="home-cta-row">
             <button
