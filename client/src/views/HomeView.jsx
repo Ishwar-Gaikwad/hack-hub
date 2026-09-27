@@ -224,7 +224,7 @@ export default function HomeView({ onNavigate, onOpenAuth }) {
         eventId={selectedEventId}
         isOpen={Boolean(selectedEventId)}
         onClose={() => setSelectedEventId(null)}
-        onNavigateToWorkspace={() => onNavigate('dashboard')}
+        onNavigateToWorkspace={(eventId, teamId) => onNavigate('my-team', { eventId, teamId })}
         onOpenAuth={onOpenAuth}
       />
       <ProjectDetailModal

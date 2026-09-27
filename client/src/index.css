@@ -1630,3 +1630,227 @@ body {
     transform: none;
   }
 }
+
+/* Participant journey */
+.participant-page { gap: 1.5rem; }
+
+.participant-kicker {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #c4b5fd;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.participant-welcome,
+.participant-next-step,
+.participant-hackathon-card,
+.participant-team-card,
+.participant-project-workspace {
+  min-width: 0;
+  border: 1px solid rgba(192, 132, 252, 0.19);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(18, 20, 34, 0.94), rgba(13, 15, 25, 0.9));
+}
+
+.participant-welcome {
+  display: flex;
+  max-width: 760px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+}
+
+.participant-welcome h2,
+.participant-next-step h2 {
+  color: #f8fafc;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.participant-welcome p,
+.participant-next-step p { color: var(--text-secondary); font-size: 0.92rem; }
+.participant-welcome .btn-primary { margin-top: 0.35rem; }
+
+.participant-hackathon-list,
+.participant-team-list { display: grid; gap: 1rem; }
+
+.participant-hackathon-card,
+.participant-team-card { padding: clamp(1.1rem, 3vw, 1.6rem); }
+
+.participant-hackathon-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.participant-hackathon-heading h2,
+.participant-project-context-row h2 {
+  color: #f8fafc;
+  font-size: clamp(1.15rem, 3vw, 1.5rem);
+  font-weight: 760;
+  letter-spacing: -0.025em;
+}
+
+.participant-hackathon-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.4rem;
+  margin: 1.1rem 0;
+  color: #c4c9d4;
+  font-size: 0.82rem;
+}
+
+.participant-hackathon-facts span,
+.participant-context-team,
+.participant-deadline span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.participant-hackathon-facts svg,
+.participant-context-team svg,
+.participant-deadline svg { color: #b99aff; flex: 0 0 auto; }
+.participant-card-action { display: inline-flex; align-items: center; gap: 0.5rem; }
+
+.participant-next-step {
+  display: flex;
+  max-width: 680px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  color: #c4b5fd;
+}
+
+.participant-member-count {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.participant-member-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  margin: 1rem 0;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  list-style: none;
+}
+
+.participant-team-actions,
+.participant-submitted-actions,
+.participant-project-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.participant-team-actions button,
+.participant-submitted-actions button,
+.participant-project-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+
+.participant-invite-box {
+  max-width: 420px;
+  margin-top: 1rem;
+  padding: 0.75rem;
+}
+
+.participant-secondary-flow {
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(14, 19, 31, 0.46);
+}
+
+.participant-secondary-flow summary {
+  color: #e8defe;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.participant-team-forms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.2rem;
+}
+
+.participant-form-block { min-width: 0; }
+.participant-form-block h2 { margin-bottom: 0.9rem; color: #f8fafc; font-size: 1rem; }
+
+.participant-project-context { max-width: 560px; }
+.participant-project-workspace { max-width: 860px; padding: clamp(1rem, 3vw, 1.6rem); }
+
+.participant-project-context-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.participant-context-team { margin-top: 0.55rem; color: var(--text-secondary); font-size: 0.78rem; }
+
+.participant-deadline {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(192, 132, 252, 0.18);
+  border-radius: var(--radius-sm);
+  background: rgba(8, 10, 18, 0.55);
+}
+
+.participant-deadline span { color: var(--text-secondary); font-size: 0.7rem; }
+.participant-deadline strong { color: #f2eaff; font-size: 0.82rem; }
+.participant-project-form { display: grid; gap: 0.9rem; padding-top: 1.2rem; }
+.participant-project-form .form-group { margin: 0; }
+.participant-form-note { color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
+
+.participant-submitted-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.85rem;
+  padding-top: 1.25rem;
+}
+
+.participant-submitted-mark {
+  display: grid;
+  width: 2.6rem;
+  height: 2.6rem;
+  place-items: center;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.1);
+  color: #6ee7b7;
+}
+
+.participant-submitted-copy h3 { color: #f8fafc; font-size: 1rem; }
+.participant-submitted-copy p { margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.8rem; }
+.participant-submitted-actions { grid-column: 2; }
+
+@media (max-width: 680px) {
+  .participant-team-forms { grid-template-columns: minmax(0, 1fr); }
+  .participant-project-context-row { flex-direction: column; }
+  .participant-deadline { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .participant-hackathon-heading { flex-direction: column; }
+  .participant-hackathon-facts { display: grid; }
+  .participant-team-actions button,
+  .participant-submitted-actions button { flex: 1 1 100%; }
+  .participant-submitted-state { grid-template-columns: auto minmax(0, 1fr); }
+  .participant-submitted-actions { grid-column: 1 / -1; }
+}

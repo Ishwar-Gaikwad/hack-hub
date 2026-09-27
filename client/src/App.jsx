@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import AuthModal from './components/AuthModal';
@@ -16,6 +16,13 @@ import OrganizerSubmissionsView from './views/OrganizerSubmissionsView';
 import AdminView from './views/AdminView';
 import DeveloperDiagnosticsView from './views/DeveloperDiagnosticsView';
 import PlaceholderView from './views/PlaceholderView';
+
+const ROLE_VIEWS = {
+  participant: ['dashboard', 'my-team', 'my-project', 'account'],
+  judge: ['assigned-projects', 'reviews', 'account'],
+  organizer: ['my-events', 'submissions', 'judges', 'judging', 'results', 'account'],
+  admin: ['admin-system', 'developer', 'account']
+};
 
 function AppContent() {
   const { currentUser, loading } = useAuth();
@@ -49,6 +56,8 @@ function AppContent() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState('login');
   const [authModalInitialRole, setAuthModalInitialRole] = useState('participant');
+  const [participantContext, setParticipantContext] = useState({});
+  const previousUser = useRef(null);
 
   // Sync hash routing
   useEffect(() => {
@@ -64,11 +73,18 @@ function AppContent() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // When auth state changes, route away from public home if logged in
+  // Keep direct hash navigation inside the current role's experience.
   useEffect(() => {
     if (!loading) {
       if (currentUser) {
-        if (activeView === 'home') {
+        const publicViews = ['home', 'hackathons', 'projects'];
+        const allowedViews = [...publicViews, ...(ROLE_VIEWS[currentUser.role] || [])];
+
+        if (!allowedViews.includes(activeView)) {
+          const defaultView = getDefaultViewForRole(currentUser.role);
+          setActiveView(defaultView);
+          window.location.hash = defaultView;
+        } else if (!previousUser.current && activeView === 'home') {
           const defaultView = getDefaultViewForRole(currentUser.role);
           setActiveView(defaultView);
           window.location.hash = defaultView;
@@ -80,10 +96,12 @@ function AppContent() {
           window.location.hash = '';
         }
       }
+      previousUser.current = currentUser;
     }
-  }, [currentUser, loading]);
+  }, [currentUser, loading, activeView]);
 
-  const navigateTo = (view) => {
+  const navigateTo = (view, context = {}) => {
+    setParticipantContext(context);
     setActiveView(view);
     window.location.hash = view === 'home' ? '' : view;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -95,6 +113,12 @@ function AppContent() {
     setAuthModalOpen(true);
   };
 
+  const publicViews = ['home', 'hackathons', 'projects'];
+  const allowedViews = [...publicViews, ...(ROLE_VIEWS[currentUser?.role] || [])];
+  const visibleView = currentUser && !allowedViews.includes(activeView)
+    ? getDefaultViewForRole(currentUser.role)
+    : activeView;
+
   if (loading) {
     return <div className="empty-loading-state" style={{ marginTop: '20vh' }}>Loading HackHub...</div>;
   }
@@ -103,7 +127,7 @@ function AppContent() {
     <div className="app-layout">
       {/* Top Role-Specific Navbar */}
       <Navbar
-        activeView={activeView}
+        activeView={visibleView}
         setActiveView={navigateTo}
         onOpenAuth={openAuth}
       />
@@ -111,35 +135,42 @@ function AppContent() {
       {/* Main Content Area */}
       <main className="main-content-container">
         {/* Public Views */}
-        {activeView === 'home' && (
+        {visibleView === 'home' && (
           <HomeView onNavigate={navigateTo} onOpenAuth={openAuth} />
         )}
-        {activeView === 'hackathons' && (
+        {visibleView === 'hackathons' && (
           <EventsView onNavigate={navigateTo} onOpenAuth={openAuth} />
         )}
-        {activeView === 'projects' && (
+        {visibleView === 'projects' && (
           <ProjectsView />
         )}
 
         {/* Participant Views */}
-        {activeView === 'dashboard' && (
+        {visibleView === 'dashboard' && (
           <ParticipantDashboard onNavigate={navigateTo} />
         )}
-        {activeView === 'my-team' && (
-          <ParticipantTeamView />
+        {visibleView === 'my-team' && (
+          <ParticipantTeamView
+            initialEventId={participantContext.eventId}
+            onNavigate={navigateTo}
+          />
         )}
-        {activeView === 'my-project' && (
-          <ParticipantProjectView />
+        {visibleView === 'my-project' && (
+          <ParticipantProjectView
+            initialEventId={participantContext.eventId}
+            initialTeamId={participantContext.teamId}
+            onNavigate={navigateTo}
+          />
         )}
 
         {/* Judge Views */}
-        {activeView === 'assigned-projects' && (
+        {visibleView === 'assigned-projects' && (
           <PlaceholderView
             title="Assigned Projects"
             description="Projects assigned to your judge queue for review."
           />
         )}
-        {activeView === 'reviews' && (
+        {visibleView === 'reviews' && (
           <PlaceholderView
             title="Reviews & Scoring"
             description="Structured rubric criteria and scorecards."
@@ -147,25 +178,25 @@ function AppContent() {
         )}
 
         {/* Organizer Views */}
-        {activeView === 'my-events' && (
+        {visibleView === 'my-events' && (
           <OrganizerEventsView />
         )}
-        {activeView === 'submissions' && (
+        {visibleView === 'submissions' && (
           <OrganizerSubmissionsView />
         )}
-        {activeView === 'judges' && (
+        {visibleView === 'judges' && (
           <PlaceholderView
             title="Judges Management"
             description="Invite judges and assign evaluation quotas."
           />
         )}
-        {activeView === 'judging' && (
+        {visibleView === 'judging' && (
           <PlaceholderView
             title="Judging Progress"
             description="Track review status and score completion across tracks."
           />
         )}
-        {activeView === 'results' && (
+        {visibleView === 'results' && (
           <PlaceholderView
             title="Results & Winners"
             description="Calculated score averages and winner selection."
@@ -173,15 +204,15 @@ function AppContent() {
         )}
 
         {/* Admin & Developer Views */}
-        {activeView === 'admin-system' && (
+        {visibleView === 'admin-system' && (
           <AdminView onNavigate={navigateTo} />
         )}
-        {activeView === 'developer' && (
+        {visibleView === 'developer' && (
           <DeveloperDiagnosticsView />
         )}
 
         {/* Common Account View */}
-        {activeView === 'account' && (
+        {visibleView === 'account' && (
           <AccountView />
         )}
       </main>

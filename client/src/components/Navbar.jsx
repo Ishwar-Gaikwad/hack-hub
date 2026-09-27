@@ -18,9 +18,10 @@ export default function Navbar({ activeView, setActiveView, onOpenAuth }) {
     switch (currentUser.role) {
       case 'participant':
         return [
-          { id: 'dashboard', label: 'Dashboard' },
-          { id: 'my-team', label: 'My Team' },
-          { id: 'my-project', label: 'My Project' },
+          { id: 'home', label: 'Home' },
+          { id: 'hackathons', label: 'Hackathons' },
+          { id: 'projects', label: 'Projects' },
+          { id: 'dashboard', label: 'My Hackathons' },
           { id: 'account', label: 'Account' }
         ];
       case 'judge':

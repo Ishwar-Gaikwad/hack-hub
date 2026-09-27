@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, LogOut, ShieldCheck, Mail, Key } from 'lucide-react';
+import { User, LogOut } from 'lucide-react';
 
 export default function AccountView() {
   const { currentUser, logout, sessionToken } = useAuth();
@@ -13,7 +13,7 @@ export default function AccountView() {
         <div className="page-title-group">
           <h1 className="page-title">Account Settings</h1>
           <p className="page-description">
-            Your authenticated HackHub account and role credentials.
+            Your HackHub profile and account access.
           </p>
         </div>
       </div>
@@ -28,17 +28,6 @@ export default function AccountView() {
             <div className="account-role-badge">
               Role: <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{currentUser.role}</span>
             </div>
-          </div>
-        </div>
-
-        <div className="account-details-grid">
-          <div className="account-detail-item">
-            <span className="account-detail-label">User ID</span>
-            <span className="account-detail-value font-mono">{currentUser._id || currentUser.id || 'N/A'}</span>
-          </div>
-          <div className="account-detail-item">
-            <span className="account-detail-label">Session Status</span>
-            <span className="account-detail-value" style={{ color: '#10b981' }}>Active</span>
           </div>
         </div>
 

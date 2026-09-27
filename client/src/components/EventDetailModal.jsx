@@ -3,8 +3,9 @@ import { X, Calendar, Clock, Award, Tag, Users, AlertCircle, ArrowRight, CheckCi
 import { useAuth } from '../context/AuthContext';
 
 export default function EventDetailModal({ eventId, isOpen, onClose, onNavigateToWorkspace, onOpenAuth }) {
-  const { currentUser } = useAuth();
+  const { currentUser, sessionToken } = useAuth();
   const [eventData, setEventData] = useState(null);
+  const [participantTeam, setParticipantTeam] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -31,6 +32,27 @@ export default function EventDetailModal({ eventId, isOpen, onClose, onNavigateT
 
     fetchDetails();
   }, [eventId, isOpen]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchParticipantTeam = async () => {
+      setParticipantTeam(null);
+      if (!isOpen || currentUser?.role !== 'participant' || !sessionToken) return;
+      try {
+        const response = await fetch('/api/teams/my-teams', {
+          headers: { Authorization: `Bearer ${sessionToken}` }
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const team = (data.teams || []).find((item) => String(item.eventId?._id || item.eventId) === String(eventId));
+        if (active) setParticipantTeam(team || null);
+      } catch {
+        // Keep event details available if membership lookup is unavailable.
+      }
+    };
+    fetchParticipantTeam();
+    return () => { active = false; };
+  }, [eventId, isOpen, currentUser?.role, sessionToken]);
 
   if (!isOpen) return null;
 
@@ -147,29 +169,29 @@ export default function EventDetailModal({ eventId, isOpen, onClose, onNavigateT
               <button className="btn-secondary" onClick={onClose}>
                 Close
               </button>
-              {currentUser ? (
+              {currentUser?.role === 'participant' ? (
                 <button
                   className="btn-primary"
                   onClick={() => {
                     onClose();
-                    onNavigateToWorkspace(eventData._id);
+                    onNavigateToWorkspace(eventData._id, participantTeam?._id);
                   }}
                 >
-                  <span>Go to Participant Workspace</span>
+                  <span>{participantTeam ? 'Open My Hackathon' : 'Join Hackathon'}</span>
                   <ArrowRight size={15} />
                 </button>
-              ) : (
+              ) : !currentUser ? (
                 <button
                   className="btn-primary"
                   onClick={() => {
                     onClose();
-                    onOpenAuth('register');
+                    onOpenAuth('register', 'participant');
                   }}
                 >
                   <span>Sign In to Participate</span>
                   <ArrowRight size={15} />
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
         ) : null}

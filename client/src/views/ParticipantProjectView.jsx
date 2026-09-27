@@ -1,320 +1,294 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { FolderGit2, Edit3, Send, CheckCircle2, AlertCircle } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Clock, Edit3, FolderGit2, Send, Users } from 'lucide-react';
+import ProjectDetailModal from '../components/ProjectDetailModal';
 
-export default function ParticipantProjectView() {
+const getId = (value) => String(value?._id || value || '');
+const formatDeadline = (value) => value
+  ? new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  : 'To be announced';
+
+export default function ParticipantProjectView({ initialEventId = '', initialTeamId = '', onNavigate }) {
   const { sessionToken } = useAuth();
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState('');
-  const [tracks, setTracks] = useState([]);
-  const [selectedTrackId, setSelectedTrackId] = useState('');
   const [myTeams, setMyTeams] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState('');
-
+  const [selectedTrackId, setSelectedTrackId] = useState('');
+  const [tracks, setTracks] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [repositoryUrl, setRepositoryUrl] = useState('');
   const [projectMsg, setProjectMsg] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchEvents = async () => {
-    try {
-      const res = await fetch('/api/events');
-      if (res.ok) {
-        const data = await res.json();
-        setEvents(data.events || []);
-        if (data.events?.length > 0 && !selectedEventId) {
-          setSelectedEventId(data.events[0]._id);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const fetchTracks = async (eventId) => {
-    if (!eventId) {
-      setTracks([]);
-      setSelectedTrackId('');
-      return;
-    }
-    try {
-      const res = await fetch(`/api/events/${eventId}/tracks`);
-      if (res.ok) {
-        const data = await res.json();
-        setTracks(data.tracks || []);
-        if (data.tracks?.length > 0) {
-          setSelectedTrackId(data.tracks[0]._id);
-        }
-      }
-    } catch {
-      setTracks([]);
-    }
-  };
-
-  const fetchMyTeams = async () => {
-    if (!sessionToken) return;
-    try {
-      const res = await fetch('/api/teams/my-teams', {
-        headers: { Authorization: `Bearer ${sessionToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const teams = data.teams || [];
-        setMyTeams(teams);
-        if (teams.length > 0 && !selectedTeamId) {
-          setSelectedTeamId(teams[0]._id);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const fetchTeamProject = async (teamId) => {
-    if (!teamId || !sessionToken) return;
-    try {
-      const res = await fetch(`/api/projects?teamId=${teamId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.projects && data.projects.length > 0) {
-          const p = data.projects[0];
-          setActiveProject(p);
-          setTitle(p.title || '');
-          setDescription(p.description || '');
-          setRepositoryUrl(p.repositoryUrl || '');
-          if (p.trackId?._id) setSelectedTrackId(p.trackId._id);
-        } else {
-          setActiveProject(null);
-          setTitle('');
-          setDescription('');
-          setRepositoryUrl('');
-        }
-      }
-    } catch {
-      // ignore
-    }
-  };
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingSubmittedProject, setEditingSubmittedProject] = useState(false);
+  const [publicProjectOpen, setPublicProjectOpen] = useState(false);
 
   useEffect(() => {
-    fetchEvents();
-    fetchMyTeams();
-  }, [sessionToken]);
+    let active = true;
+    const fetchWorkspace = async () => {
+      setLoading(true);
+      try {
+        const headers = { Authorization: `Bearer ${sessionToken}` };
+        const [eventResponse, teamsResponse, projectsResponse] = await Promise.all([
+          fetch('/api/events'),
+          fetch('/api/teams/my-teams', { headers }),
+          fetch('/api/projects/my-projects', { headers })
+        ]);
+        const [eventData, teamsData, projectsData] = await Promise.all([
+          eventResponse.ok ? eventResponse.json() : { events: [] },
+          teamsResponse.ok ? teamsResponse.json() : { teams: [] },
+          projectsResponse.ok ? projectsResponse.json() : { projects: [] }
+        ]);
+        if (!active) return;
+        const loadedTeams = teamsData.teams || [];
+        const loadedProjects = projectsData.projects || [];
+        setEvents(eventData.events || []);
+        setMyTeams(loadedTeams);
+        setProjects(loadedProjects);
+
+        const preferredTeam = loadedTeams.find((team) => getId(team) === String(initialTeamId))
+          || loadedTeams.find((team) => getId(team.eventId) === String(initialEventId))
+          || loadedTeams[0];
+        if (preferredTeam) {
+          setSelectedTeamId(getId(preferredTeam));
+          const project = loadedProjects.find((item) => getId(item.teamId) === getId(preferredTeam));
+          setActiveProject(project || null);
+          setTitle(project?.title || '');
+          setDescription(project?.description || '');
+          setRepositoryUrl(project?.repositoryUrl || '');
+          setSelectedTrackId(getId(project?.trackId));
+        }
+      } catch {
+        if (active) setProjectMsg({ type: 'error', text: 'Your project workspace could not be loaded. Please try again.' });
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    if (sessionToken) fetchWorkspace();
+    return () => { active = false; };
+  }, [sessionToken, initialEventId, initialTeamId]);
+
+  const selectedTeam = myTeams.find((team) => getId(team) === selectedTeamId);
+  const eventId = getId(selectedTeam?.eventId);
+  const event = events.find((item) => getId(item) === eventId) || (selectedTeam?.eventId && typeof selectedTeam.eventId === 'object' ? selectedTeam.eventId : null);
 
   useEffect(() => {
-    if (selectedEventId) {
-      fetchTracks(selectedEventId);
-    }
-  }, [selectedEventId]);
+    let active = true;
+    const fetchTracks = async () => {
+      if (!eventId) {
+        setTracks([]);
+        setSelectedTrackId('');
+        return;
+      }
+      try {
+        const response = await fetch(`/api/events/${eventId}/tracks`);
+        const data = response.ok ? await response.json() : { tracks: [] };
+        if (!active) return;
+        const availableTracks = data.tracks || [];
+        setTracks(availableTracks);
+        if (activeProject?.trackId && availableTracks.some((track) => getId(track) === getId(activeProject.trackId))) {
+          setSelectedTrackId(getId(activeProject.trackId));
+        } else if (!availableTracks.some((track) => getId(track) === selectedTrackId)) {
+          setSelectedTrackId(availableTracks[0] ? getId(availableTracks[0]) : '');
+        }
+      } catch {
+        if (active) setTracks([]);
+      }
+    };
+    fetchTracks();
+    return () => { active = false; };
+  }, [eventId, activeProject?._id]);
 
-  useEffect(() => {
-    if (selectedTeamId) {
-      fetchTeamProject(selectedTeamId);
-    }
-  }, [selectedTeamId]);
+  const handleTeamChange = (nextTeamId) => {
+    const nextTeam = myTeams.find((team) => getId(team) === nextTeamId);
+    const nextProject = projects.find((project) => getId(project.teamId) === nextTeamId) || null;
+    setSelectedTeamId(nextTeamId);
+    setActiveProject(nextProject);
+    setTitle(nextProject?.title || '');
+    setDescription(nextProject?.description || '');
+    setRepositoryUrl(nextProject?.repositoryUrl || '');
+    setSelectedTrackId(getId(nextProject?.trackId));
+    setProjectMsg(null);
+    setEditingSubmittedProject(false);
+  };
 
   const handleSaveDraft = async (e) => {
     e.preventDefault();
     setProjectMsg(null);
-    if (!selectedEventId || !selectedTeamId || !title.trim()) return;
+    if (!eventId || !selectedTeamId || !selectedTrackId || title.trim().length < 2) return;
 
-    setLoading(true);
+    setSaving(true);
     try {
-      if (activeProject?._id) {
-        // Update
-        const res = await fetch(`/api/projects/${activeProject._id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${sessionToken}`
-          },
-          body: JSON.stringify({
-            title: title.trim(),
-            description: description.trim(),
-            repositoryUrl: repositoryUrl.trim(),
-            trackId: selectedTrackId || undefined
-          })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setActiveProject(data.project);
-          setProjectMsg({ type: 'success', text: 'Project draft updated!' });
-        } else {
-          setProjectMsg({ type: 'error', text: data.message || data.error });
-        }
+      const isUpdate = Boolean(activeProject?._id);
+      const response = await fetch(isUpdate ? `/api/projects/${activeProject._id}` : '/api/projects', {
+        method: isUpdate ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({
+          ...(isUpdate ? {} : { eventId, teamId: selectedTeamId }),
+          title: title.trim(),
+          description: description.trim(),
+          repositoryUrl: repositoryUrl.trim(),
+          trackId: selectedTrackId
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setActiveProject(data.project);
+        setProjects((current) => [...current.filter((project) => getId(project) !== getId(data.project)), data.project]);
+        setEditingSubmittedProject(false);
+        setProjectMsg({ type: 'success', text: isUpdate ? 'Project changes saved.' : 'Draft saved.' });
       } else {
-        // Create
-        const res = await fetch('/api/projects', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${sessionToken}`
-          },
-          body: JSON.stringify({
-            eventId: selectedEventId,
-            teamId: selectedTeamId,
-            trackId: selectedTrackId || undefined,
-            title: title.trim(),
-            description: description.trim(),
-            repositoryUrl: repositoryUrl.trim()
-          })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setActiveProject(data.project);
-          setProjectMsg({ type: 'success', text: 'Project draft created!' });
-        } else {
-          setProjectMsg({ type: 'error', text: data.message || data.error });
-        }
+        setProjectMsg({ type: 'error', text: data.message || data.error || 'Could not save the project.' });
       }
-    } catch (err) {
-      setProjectMsg({ type: 'error', text: err.message });
+    } catch (error) {
+      setProjectMsg({ type: 'error', text: error.message || 'Could not save the project.' });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   const handleSubmit = async () => {
     if (!activeProject?._id) return;
     setProjectMsg(null);
-    setLoading(true);
-
+    setSaving(true);
     try {
-      const res = await fetch(`/api/projects/${activeProject._id}/submit`, {
+      const response = await fetch(`/api/projects/${activeProject._id}/submit`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${sessionToken}` }
       });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await response.json();
+      if (response.ok) {
         setActiveProject(data.project);
-        setProjectMsg({
-          type: 'success',
-          text: 'Project submitted! It is now published in the public gallery.'
-        });
+        setProjects((current) => current.map((project) => getId(project) === getId(data.project) ? data.project : project));
+        setProjectMsg({ type: 'success', text: 'Your project is now submitted to the public gallery.' });
       } else {
-        setProjectMsg({ type: 'error', text: data.message || data.error });
+        setProjectMsg({ type: 'error', text: data.message || data.error || 'Could not submit the project.' });
       }
-    } catch (err) {
-      setProjectMsg({ type: 'error', text: err.message });
+    } catch (error) {
+      setProjectMsg({ type: 'error', text: error.message || 'Could not submit the project.' });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  if (loading) return <div className="empty-loading-state">Loading your project...</div>;
+
+  if (myTeams.length === 0) {
+    return (
+      <div className="page-view-container participant-page">
+        <div className="page-header-block"><div className="page-title-group"><h1 className="page-title">My Project</h1><p className="page-description">Your project starts with a team.</p></div></div>
+        <section className="participant-next-step">
+          <Users size={22} />
+          <h2>Create or join a team first.</h2>
+          <p>HackHub projects belong to a team participating in a hackathon.</p>
+          <button className="btn-primary" onClick={() => onNavigate?.('my-team', { eventId: initialEventId })}>Set up your team <ArrowRight size={15} /></button>
+        </section>
+      </div>
+    );
+  }
+
+  const projectIsSubmitted = activeProject?.status === 'submitted';
+  const showProjectForm = !projectIsSubmitted || editingSubmittedProject;
+
   return (
-    <div className="page-view-container">
+    <div className="page-view-container participant-page">
       <div className="page-header-block">
         <div className="page-title-group">
           <h1 className="page-title">My Project</h1>
-          <p className="page-description">Draft, edit, and submit your hackathon project.</p>
+          <p className="page-description">Build your team’s submission and share it with the gallery.</p>
         </div>
       </div>
 
       {projectMsg && (
-        <div className={`alert-box ${projectMsg.type === 'success' ? 'success' : 'error'}`}>
+        <div className={`alert-box ${projectMsg.type === 'success' ? 'success' : 'error'}`} role="status">
           {projectMsg.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           <span>{projectMsg.text}</span>
         </div>
       )}
 
-      {activeProject && (
-        <div className="project-status-banner">
-          <span className={`badge-tag ${activeProject.status === 'submitted' ? 'badge-submitted' : 'badge-draft'}`}>
-            STATUS: {activeProject.status?.toUpperCase()}
-          </span>
-          <span className="text-muted-xs" style={{ marginLeft: '0.75rem' }}>
-            {activeProject.status === 'submitted'
-              ? 'This project has been submitted and is live in the public gallery.'
-              : 'Draft status: Make sure to submit before the deadline.'}
-          </span>
+      {myTeams.length > 1 && (
+        <div className="participant-project-context">
+          <label className="form-label" htmlFor="participant-project-team">Team</label>
+          <select id="participant-project-team" className="form-input form-select" value={selectedTeamId} onChange={(e) => handleTeamChange(e.target.value)}>
+            {myTeams.map((team) => <option key={team._id} value={team._id}>{team.name} · {team.eventId?.name || 'Hackathon'}</option>)}
+          </select>
         </div>
       )}
 
-      <div className="workspace-card" style={{ maxWidth: '720px' }}>
-        <form onSubmit={handleSaveDraft} className="form-group-block">
-          <div className="form-group">
-            <label className="form-label">Submitting Team</label>
-            <select
-              className="form-input form-select"
-              value={selectedTeamId}
-              onChange={(e) => setSelectedTeamId(e.target.value)}
-              required
-            >
-              {myTeams.map((t) => (
-                <option key={t._id} value={t._id}>{t.name}</option>
-              ))}
-            </select>
+      <section className="participant-project-workspace">
+        <div className="participant-project-context-row">
+          <div>
+            <span className="participant-kicker">{event?.name || 'Hackathon workspace'}</span>
+            <h2>{activeProject?.title || 'Start your project'}</h2>
+            <span className="participant-context-team"><Users size={14} /> {selectedTeam?.name || 'Your team'}</span>
           </div>
+          {event?.submissionDeadline && (
+            <div className="participant-deadline">
+              <span><Clock size={14} /> Submission deadline</span>
+              <strong>{formatDeadline(event.submissionDeadline)}</strong>
+            </div>
+          )}
+        </div>
 
-          <div className="form-group">
-            <label className="form-label">Competition Track</label>
-            <select
-              className="form-input form-select"
-              value={selectedTrackId}
-              onChange={(e) => setSelectedTrackId(e.target.value)}
-            >
-              <option value="">General Track</option>
-              {tracks.map((tr) => (
-                <option key={tr._id} value={tr._id}>{tr.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Project Title</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="e.g. Autonomous Workflow Orchestrator"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Description & Architecture</label>
-            <textarea
-              className="form-input form-textarea"
-              rows={4}
-              placeholder="Provide an overview of what you built and how it works..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Repository URL</label>
-            <input
-              type="url"
-              className="form-input"
-              placeholder="https://github.com/my-team/my-project"
-              value={repositoryUrl}
-              onChange={(e) => setRepositoryUrl(e.target.value)}
-            />
-          </div>
-
-          <div className="actions-bar" style={{ marginTop: '1.25rem' }}>
-            <button type="submit" className="btn-secondary" disabled={loading || !selectedTeamId}>
-              <Edit3 size={15} />
-              <span>{activeProject ? 'Update Draft' : 'Save as Draft'}</span>
-            </button>
-
-            {activeProject && activeProject.status === 'draft' && (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleSubmit}
-                disabled={loading}
-              >
-                <Send size={15} />
-                <span>Submit Project Explicitly</span>
+        {projectIsSubmitted && !editingSubmittedProject ? (
+          <div className="participant-submitted-state">
+            <div className="participant-submitted-mark"><CheckCircle2 size={20} /></div>
+            <div className="participant-submitted-copy">
+              <h3>Project submitted</h3>
+              <p>Your project is published in the public gallery{activeProject.updatedAt ? ` · ${formatDeadline(activeProject.updatedAt)}` : ''}.</p>
+            </div>
+            <div className="participant-submitted-actions">
+              <button className="btn-primary" type="button" onClick={() => setPublicProjectOpen(true)}>
+                View Project <ArrowRight size={15} />
               </button>
-            )}
+              <button className="btn-secondary" type="button" onClick={() => setEditingSubmittedProject(true)}>
+                <Edit3 size={14} /> Edit submission
+              </button>
+            </div>
           </div>
-        </form>
-      </div>
+        ) : (
+          <form onSubmit={handleSaveDraft} className="participant-project-form">
+            {tracks.length === 0 && <p className="participant-form-note">This hackathon has no tracks yet. Ask the organizer to configure a track before saving a project.</p>}
+            <div className="form-group">
+              <label className="form-label" htmlFor="participant-project-title">Project name</label>
+              <input id="participant-project-title" className="form-input" type="text" value={title} onChange={(e) => setTitle(e.target.value)} minLength={2} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="participant-project-track">Track</label>
+              <select id="participant-project-track" className="form-input form-select" value={selectedTrackId} onChange={(e) => setSelectedTrackId(e.target.value)} required disabled={tracks.length === 0}>
+                <option value="" disabled>Select a track</option>
+                {tracks.map((track) => <option key={track._id} value={track._id}>{track.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="participant-project-description">Description</label>
+              <textarea id="participant-project-description" className="form-input form-textarea" rows={5} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What does your team’s project do?" />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="participant-project-repository">Repository URL</label>
+              <input id="participant-project-repository" className="form-input" type="url" value={repositoryUrl} onChange={(e) => setRepositoryUrl(e.target.value)} placeholder="https://github.com/team/project" />
+            </div>
+            <div className="participant-project-actions">
+              <button type="submit" className="btn-secondary" disabled={saving || !selectedTrackId || title.trim().length < 2}>
+                <Edit3 size={14} /> {activeProject ? 'Save Changes' : 'Save Draft'}
+              </button>
+              {activeProject?.status === 'draft' && (
+                <button type="button" className="btn-primary" onClick={handleSubmit} disabled={saving}>
+                  <Send size={14} /> Submit Project
+                </button>
+              )}
+              {editingSubmittedProject && <button type="button" className="btn-outline" onClick={() => setEditingSubmittedProject(false)}>Cancel</button>}
+            </div>
+            {projectIsSubmitted && <p className="participant-form-note">Edits remain visible in the public gallery. The server will enforce the event deadline.</p>}
+          </form>
+        )}
+      </section>
+
+      <ProjectDetailModal project={activeProject} isOpen={publicProjectOpen} onClose={() => setPublicProjectOpen(false)} />
     </div>
   );
 }

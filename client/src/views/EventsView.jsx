@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Search, Award, Sparkles, ArrowRight, Tag, Clock } from 'lucide-react';
+import { Calendar, Search, ArrowRight, Tag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import EventDetailModal from '../components/EventDetailModal';
 
@@ -103,36 +103,22 @@ export default function EventsView({ onNavigate, onOpenAuth }) {
       ) : (
         <div className="cards-grid">
           {filteredEvents.map((evt) => {
-            const isExpired = evt.submissionDeadline && new Date(evt.submissionDeadline) < new Date();
             return (
               <div key={evt._id} className="event-card">
-                <div className="event-card-top">
-                  <span className={`badge-tag ${isExpired ? 'badge-ended' : 'badge-active'}`}>
-                    {isExpired ? 'Submissions Ended' : (evt.status || 'Active')}
-                  </span>
-                  <div className="event-timeline-badge">
-                    <Clock size={12} />
-                    <span>Deadline: {formatDate(evt.submissionDeadline)}</span>
-                  </div>
-                </div>
-
                 <h2 className="event-card-title">{evt.name}</h2>
                 <p className="event-card-desc">
                   {evt.description || 'No description provided.'}
                 </p>
 
-                {/* Tracks / Prizes summary pills */}
                 <div className="event-pills-row">
+                  <span className="event-meta-pill">
+                    <Calendar size={12} color="#a78bfa" />
+                    <span>{formatDate(evt.startDate)} – {formatDate(evt.endDate)}</span>
+                  </span>
                   {evt.tracks?.length > 0 && (
                     <span className="event-meta-pill">
                       <Tag size={12} color="#a855f7" />
                       <span>{evt.tracks.length} {evt.tracks.length === 1 ? 'Track' : 'Tracks'}</span>
-                    </span>
-                  )}
-                  {evt.prizes?.length > 0 && (
-                    <span className="event-meta-pill">
-                      <Award size={12} color="#f59e0b" />
-                      <span>{evt.prizes.length} {evt.prizes.length === 1 ? 'Prize' : 'Prizes'}</span>
                     </span>
                   )}
                 </div>
@@ -143,7 +129,7 @@ export default function EventsView({ onNavigate, onOpenAuth }) {
                     style={{ width: '100%', justifyContent: 'center' }}
                     onClick={() => setSelectedEventId(evt._id)}
                   >
-                    <span>View Event Details & Tracks</span>
+                    <span>View Hackathon</span>
                     <ArrowRight size={13} />
                   </button>
                 </div>
@@ -158,7 +144,7 @@ export default function EventsView({ onNavigate, onOpenAuth }) {
         eventId={selectedEventId}
         isOpen={Boolean(selectedEventId)}
         onClose={() => setSelectedEventId(null)}
-        onNavigateToWorkspace={() => onNavigate('participant-workspace')}
+        onNavigateToWorkspace={(eventId, teamId) => onNavigate('my-team', { eventId, teamId })}
         onOpenAuth={onOpenAuth}
       />
     </div>
