@@ -1,0 +1,179 @@
+import crypto from 'crypto';
+import Webhook, { SUPPORTED_WEBHOOK_EVENTS } from '../models/webhook.model.js';
+import Event from '../models/event.model.js';
+import { dispatchWebhook } from '../services/webhook.service.js';
+import AuditLog from '../models/audit.model.js';
+
+/**
+ * Register a new event webhook (Organizer/Admin only)
+ * POST /api/events/:eventId/webhooks
+ */
+export async function createWebhook(req, res) {
+  const { eventId } = req.params;
+  const { targetUrl, secret, subscribedEvents = ['*'] } = req.body;
+
+  try {
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
+    }
+
+    if (!targetUrl || typeof targetUrl !== 'string' || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'A valid targetUrl starting with http:// or https:// is required'
+      });
+    }
+
+    // Generate random secret if not provided
+    const webhookSecret = secret && typeof secret === 'string' && secret.trim().length >= 8
+      ? secret.trim()
+      : crypto.randomBytes(24).toString('hex');
+
+    // Validate subscribed events
+    const validEvents = Array.isArray(subscribedEvents) ? subscribedEvents : [subscribedEvents];
+    const invalidEvent = validEvents.find(e => e !== '*' && !SUPPORTED_WEBHOOK_EVENTS.includes(e));
+    if (invalidEvent) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: `Invalid webhook event: "${invalidEvent}". Supported: ${SUPPORTED_WEBHOOK_EVENTS.join(', ')} or "*"`
+      });
+    }
+
+    const webhook = await Webhook.create({
+      eventId: event._id,
+      targetUrl,
+      secret: webhookSecret,
+      subscribedEvents: validEvents,
+      active: true
+    });
+
+    await AuditLog.create({
+      action: 'webhook.created',
+      actorId: req.user._id,
+      eventId: event._id,
+      metadata: { webhookId: webhook._id, targetUrl, subscribedEvents: validEvents },
+      ip: String(req.ip || '127.0.0.1')
+    });
+
+    return res.status(201).json({
+      message: 'Webhook registered successfully',
+      webhook: {
+        _id: webhook._id,
+        eventId: webhook.eventId,
+        targetUrl: webhook.targetUrl,
+        secret: webhook.secret,
+        subscribedEvents: webhook.subscribedEvents,
+        active: webhook.active,
+        createdAt: webhook.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('[Webhook Controller] Error creating webhook:', error);
+    return res.status(500).json({ error: 'InternalServerError', message: 'Failed to create webhook' });
+  }
+}
+
+/**
+ * List webhooks for an event (Organizer/Admin only)
+ * GET /api/events/:eventId/webhooks
+ */
+export async function getWebhooks(req, res) {
+  const { eventId } = req.params;
+
+  try {
+    const webhooks = await Webhook.find({ eventId }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      count: webhooks.length,
+      webhooks: webhooks.map(h => ({
+        _id: h._id,
+        eventId: h.eventId,
+        targetUrl: h.targetUrl,
+        secret: h.secret,
+        subscribedEvents: h.subscribedEvents,
+        active: h.active,
+        deliveryCount: h.deliveryLogs.length,
+        recentDeliveries: h.deliveryLogs.slice(-5),
+        createdAt: h.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error('[Webhook Controller] Error getting webhooks:', error);
+    return res.status(500).json({ error: 'InternalServerError', message: 'Failed to retrieve webhooks' });
+  }
+}
+
+/**
+ * Delete a webhook (Organizer/Admin only)
+ * DELETE /api/events/:eventId/webhooks/:webhookId
+ */
+export async function deleteWebhook(req, res) {
+  const { eventId, webhookId } = req.params;
+
+  try {
+    const deleted = await Webhook.findOneAndDelete({ _id: webhookId, eventId });
+    if (!deleted) {
+      return res.status(404).json({ error: 'WebhookNotFound', message: 'Webhook not found' });
+    }
+
+    await AuditLog.create({
+      action: 'webhook.deleted',
+      actorId: req.user._id,
+      eventId,
+      metadata: { webhookId, targetUrl: deleted.targetUrl },
+      ip: String(req.ip || '127.0.0.1')
+    });
+
+    return res.status(200).json({
+      message: 'Webhook deleted successfully',
+      webhookId
+    });
+  } catch (error) {
+    console.error('[Webhook Controller] Error deleting webhook:', error);
+    return res.status(500).json({ error: 'InternalServerError', message: 'Failed to delete webhook' });
+  }
+}
+
+/**
+ * Test webhook delivery by dispatching a test ping event
+ * POST /api/events/:eventId/webhooks/:webhookId/test
+ */
+export async function testWebhook(req, res) {
+  const { eventId, webhookId } = req.params;
+
+  try {
+    const webhook = await Webhook.findOne({ _id: webhookId, eventId });
+    if (!webhook) {
+      return res.status(404).json({ error: 'WebhookNotFound', message: 'Webhook not found' });
+    }
+
+    const testPayload = {
+      message: 'HackHub webhook test delivery',
+      timestamp: new Date().toISOString(),
+      initiatedBy: req.user.email
+    };
+
+    const dispatchResult = await dispatchWebhook(eventId, 'test.ping', testPayload);
+
+    // Refresh webhook to get updated delivery logs
+    const refreshed = await Webhook.findById(webhookId);
+    const lastLog = refreshed.deliveryLogs[refreshed.deliveryLogs.length - 1];
+
+    return res.status(200).json({
+      message: 'Test webhook dispatched',
+      result: dispatchResult,
+      lastDelivery: lastLog
+    });
+  } catch (error) {
+    console.error('[Webhook Controller] Error testing webhook:', error);
+    return res.status(500).json({ error: 'InternalServerError', message: 'Failed to test webhook' });
+  }
+}
+
+export default {
+  createWebhook,
+  getWebhooks,
+  deleteWebhook,
+  testWebhook
+};

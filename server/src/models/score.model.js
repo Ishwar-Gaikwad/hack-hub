@@ -12,6 +12,11 @@ const scoreSchema = new mongoose.Schema(
       type: String,
       index: true
     },
+    eventId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Event',
+      index: true
+    },
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Project',
@@ -25,6 +30,12 @@ const scoreSchema = new mongoose.Schema(
       functionality: { type: Number, min: 1, max: 5, default: 3 },
       quality: { type: Number, min: 1, max: 5, default: 3 },
       innovation: { type: Number, min: 1, max: 5, default: 3 }
+    },
+    rawTotal: {
+      type: Number
+    },
+    normalizedScore: {
+      type: Number
     },
     comment: {
       type: String,

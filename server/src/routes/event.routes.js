@@ -36,6 +36,25 @@ import {
   getAuditLogs,
   getParticipationMetrics
 } from '../controllers/audit.controller.js';
+import {
+  createWebhook,
+  getWebhooks,
+  deleteWebhook,
+  testWebhook
+} from '../controllers/webhook.controller.js';
+import {
+  getEventCertificates,
+  getCertificate
+} from '../controllers/certificate.controller.js';
+import {
+  getJudgingRecord,
+  verifyRecord
+} from '../controllers/record.controller.js';
+import {
+  bulkImport,
+  bulkExportFull,
+  bulkExportCSV
+} from '../controllers/bulk.controller.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/role.middleware.js';
 import { voteRateLimiter, commentRateLimiter } from '../middleware/rate-limit.middleware.js';
@@ -85,6 +104,25 @@ router.post('/:eventId/projects/:projectId/comments', authenticate, commentRateL
 // Audit & Abuse Protection Metrics (T3 - Staff only)
 router.get('/:eventId/audit-logs', ...requireStaff, getAuditLogs);
 router.get('/:eventId/metrics', ...requireStaff, getParticipationMetrics);
+
+// Event Webhooks (T4)
+router.post('/:eventId/webhooks', ...requireStaff, createWebhook);
+router.get('/:eventId/webhooks', ...requireStaff, getWebhooks);
+router.delete('/:eventId/webhooks/:webhookId', ...requireStaff, deleteWebhook);
+router.post('/:eventId/webhooks/:webhookId/test', ...requireStaff, testWebhook);
+
+// Verifiable Certificates (T4)
+router.get('/:eventId/certificates', optionalAuthenticate, getEventCertificates);
+router.get('/:eventId/certificates/:type/:recipientId', optionalAuthenticate, getCertificate);
+
+// Verifiable Judging Records (T4)
+router.get('/:eventId/records/judging', optionalAuthenticate, getJudgingRecord);
+router.post('/:eventId/records/verify', verifyRecord);
+
+// Bulk Import & Export (T4)
+router.post('/:eventId/import', ...requireStaff, bulkImport);
+router.get('/:eventId/export/full', ...requireStaff, bulkExportFull);
+router.get('/:eventId/export/csv', ...requireStaff, bulkExportCSV);
 
 export default router;
 

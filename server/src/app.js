@@ -13,6 +13,8 @@ import projectRouter from './routes/project.routes.js';
 import judgingRouter from './routes/judging.routes.js';
 import { exportCSV } from './controllers/judging.controller.js';
 import { deleteComment } from './controllers/comment.controller.js';
+import { getEmbedGalleryHtml, getEmbedGalleryJson } from './controllers/embed.controller.js';
+import { getOpenApiSpec, getApiDocsHtml } from './controllers/openapi.controller.js';
 import { authenticate } from './middleware/auth.middleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -66,12 +68,25 @@ app.get('/api/export.csv', authenticate, exportCSV);
 app.delete('/api/comments/:commentId', authenticate, deleteComment);
 app.delete('/comments/:commentId', authenticate, deleteComment);
 
+// Embeddable Showcase Gallery (T4)
+app.get('/embed/gallery/:eventId', getEmbedGalleryHtml);
+app.get('/api/embed/gallery/:eventId', getEmbedGalleryJson);
+
+// OpenAPI Documentation & Interactive Docs (T4)
+app.get('/api/openapi.json', getOpenApiSpec);
+app.get('/api/docs', getApiDocsHtml);
+
 // Serve static frontend assets if built
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path === '/projects' || req.path.startsWith('/projects/')) {
+    if (
+      req.path.startsWith('/api') ||
+      req.path === '/projects' ||
+      req.path.startsWith('/projects/') ||
+      req.path.startsWith('/embed')
+    ) {
       return next();
     }
     res.sendFile(path.join(clientDistPath, 'index.html'));
