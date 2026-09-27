@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { PlusCircle, Tag, Award, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function OrganizerEventsView() {
-  const { sessionToken } = useAuth();
+  const { currentUser, sessionToken } = useAuth();
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -22,7 +22,18 @@ export default function OrganizerEventsView() {
   const [prizeValue, setPrizeValue] = useState('');
 
   const [msg, setMsg] = useState(null);
+  const [dateError, setDateError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const openDatePicker = (event) => {
+    if (typeof event.currentTarget.showPicker === 'function') {
+      try {
+        event.currentTarget.showPicker();
+      } catch {
+        // The input remains editable if the browser does not allow a programmatic picker.
+      }
+    }
+  };
 
   const fetchEvents = async () => {
     try {
@@ -67,6 +78,37 @@ export default function OrganizerEventsView() {
   const handleCreateEvent = async (e) => {
     e.preventDefault();
     setMsg(null);
+
+    if (name.trim().length < 2) {
+      setMsg({ type: 'error', text: 'Enter an event name with at least 2 characters.' });
+      return;
+    }
+
+    if (!startDate || !submissionDeadline || !endDate) {
+      setDateError('Choose a start date, submission deadline, and end date to continue.');
+      return;
+    }
+
+    const startTime = new Date(startDate).getTime();
+    const deadlineTime = new Date(submissionDeadline).getTime();
+    const endTime = new Date(endDate).getTime();
+
+    if (![startTime, deadlineTime, endTime].every(Number.isFinite)) {
+      setDateError('Enter valid dates and times for the full event timeline.');
+      return;
+    }
+
+    if (startTime > deadlineTime) {
+      setDateError('The start date and time must be on or before the submission deadline.');
+      return;
+    }
+
+    if (deadlineTime > endTime) {
+      setDateError('The submission deadline must be on or before the event end date.');
+      return;
+    }
+
+    setDateError('');
     setLoading(true);
 
     try {
@@ -93,6 +135,7 @@ export default function OrganizerEventsView() {
         setStartDate('');
         setSubmissionDeadline('');
         setEndDate('');
+        setDateError('');
         fetchEvents();
         setSelectedEventId(data.event._id);
       } else {
@@ -104,6 +147,15 @@ export default function OrganizerEventsView() {
       setLoading(false);
     }
   };
+
+  if (currentUser?.role !== 'organizer') {
+    return (
+      <div className="empty-state-card organizer-access-message" role="status">
+        <h1>Organizer access required</h1>
+        <p>Sign in with an organizer account to create and manage events.</p>
+      </div>
+    );
+  }
 
   const handleCreateTrack = async (e) => {
     e.preventDefault();
@@ -166,7 +218,7 @@ export default function OrganizerEventsView() {
       <div className="page-header-block">
         <div className="page-title-group">
           <h1 className="page-title">My Events</h1>
-          <p className="page-description">Create hackathon timelines, configure competition tracks, and set prizes.</p>
+          <p className="page-description">Create an event, set its timeline, then add tracks and prizes.</p>
         </div>
       </div>
 
@@ -179,12 +231,16 @@ export default function OrganizerEventsView() {
 
       <div className="workspace-layout">
         {/* Create Event */}
-        <div className="workspace-card">
-          <h2 className="card-heading" style={{ marginBottom: '1rem' }}>Create Event</h2>
-          <form onSubmit={handleCreateEvent} className="form-group-block">
+        <section className="workspace-card event-creation-card">
+          <div className="event-card-heading">
+            <h2 className="card-heading">Create Event</h2>
+            <p className="event-section-help">Start with the event details and schedule.</p>
+          </div>
+          <form onSubmit={handleCreateEvent} className="event-create-form" noValidate>
             <div className="form-group">
-              <label className="form-label">Event Name</label>
+              <label className="form-label" htmlFor="event-name">Event name</label>
               <input
+                id="event-name"
                 type="text"
                 className="form-input"
                 placeholder="e.g. AI Grand Prix 2026"
@@ -194,9 +250,10 @@ export default function OrganizerEventsView() {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Description</label>
+            <div className="form-group event-description-group">
+              <label className="form-label" htmlFor="event-description">Description <span className="optional-label">Optional</span></label>
               <textarea
+                id="event-description"
                 className="form-input form-textarea"
                 rows={3}
                 value={description}
@@ -204,67 +261,98 @@ export default function OrganizerEventsView() {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Start Date</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
-            </div>
+            <section className="event-timeline-section" aria-labelledby="event-timeline-title">
+              <div className="event-timeline-heading">
+                <div>
+                  <h3 id="event-timeline-title">Event timeline</h3>
+                  <p>All times use your local time zone.</p>
+                </div>
+              </div>
 
-            <div className="form-group">
-              <label className="form-label" style={{ color: '#ec4899' }}>Submission Deadline</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={submissionDeadline}
-                onChange={(e) => setSubmissionDeadline(e.target.value)}
-                required
-              />
-            </div>
+              <div className="event-timeline-fields">
+                <div className="form-group date-time-field">
+                  <label className="form-label" htmlFor="event-start-date">Start date and time</label>
+                  <p id="event-start-help" className="date-field-help">When the hackathon begins.</p>
+                  <input
+                    id="event-start-date"
+                    type="datetime-local"
+                    className="form-input event-datetime-input"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setDateError(''); }}
+                    onClick={openDatePicker}
+                    aria-describedby="event-start-help"
+                    required
+                  />
+                </div>
 
-            <div className="form-group">
-              <label className="form-label">End Date</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                required
-              />
-            </div>
+                <div className="form-group date-time-field">
+                  <label className="form-label" htmlFor="event-submission-deadline">Submission deadline</label>
+                  <p id="event-deadline-help" className="date-field-help">After this time, participants can no longer submit.</p>
+                  <input
+                    id="event-submission-deadline"
+                    type="datetime-local"
+                    className="form-input event-datetime-input deadline-input"
+                    value={submissionDeadline}
+                    onChange={(e) => { setSubmissionDeadline(e.target.value); setDateError(''); }}
+                    onClick={openDatePicker}
+                    aria-describedby="event-deadline-help"
+                    required
+                  />
+                </div>
 
-            <button type="submit" className="btn-primary" disabled={loading}>
+                <div className="form-group date-time-field">
+                  <label className="form-label" htmlFor="event-end-date">End date and time</label>
+                  <p id="event-end-help" className="date-field-help">When the hackathon concludes.</p>
+                  <input
+                    id="event-end-date"
+                    type="datetime-local"
+                    className="form-input event-datetime-input"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setDateError(''); }}
+                    onClick={openDatePicker}
+                    aria-describedby="event-end-help"
+                    required
+                  />
+                </div>
+              </div>
+
+              {dateError && <p className="event-date-error" role="alert">{dateError}</p>}
+            </section>
+
+            <button type="submit" className="btn-primary event-publish-button" disabled={loading}>
               <PlusCircle size={15} />
-              <span>Publish Event</span>
+              <span>{loading ? 'Publishing…' : 'Publish Event'}</span>
             </button>
           </form>
-        </div>
+        </section>
 
         {/* Tracks & Prizes */}
-        <div className="workspace-card">
-          <h2 className="card-heading" style={{ marginBottom: '1rem' }}>Tracks & Prizes</h2>
+        <section className="workspace-card event-configuration-card">
+          <div className="event-card-heading">
+            <h2 className="card-heading">Tracks &amp; Prizes</h2>
+            <p className="event-section-help">Configure what teams can build and what they can win.</p>
+          </div>
 
           <div className="form-group">
-            <label className="form-label">Select Event</label>
+            <label className="form-label" htmlFor="configure-event">Select event</label>
             <select
+              id="configure-event"
               className="form-input form-select"
               value={selectedEventId}
               onChange={(e) => setSelectedEventId(e.target.value)}
             >
+              {events.length === 0 && <option value="">Create an event first</option>}
               {events.map((evt) => (
                 <option key={evt._id} value={evt._id}>{evt.name}</option>
               ))}
             </select>
           </div>
 
-          <form onSubmit={handleCreateTrack} style={{ marginTop: '1.25rem' }}>
-            <label className="form-label">Add Track</label>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <form onSubmit={handleCreateTrack} className="event-config-form">
+            <label className="form-label" htmlFor="new-track-name">Add track</label>
+            <div className="event-config-input-row">
               <input
+                id="new-track-name"
                 type="text"
                 className="form-input"
                 placeholder="Track name..."
@@ -272,14 +360,15 @@ export default function OrganizerEventsView() {
                 onChange={(e) => setTrackName(e.target.value)}
                 required
               />
-              <button type="submit" className="btn-secondary btn-sm">Add</button>
+              <button type="submit" className="btn-secondary btn-sm" disabled={!selectedEventId}>Add track</button>
             </div>
           </form>
 
-          <form onSubmit={handleCreatePrize} style={{ marginTop: '1.25rem' }}>
-            <label className="form-label">Add Prize</label>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <form onSubmit={handleCreatePrize} className="event-config-form">
+            <label className="form-label" htmlFor="new-prize-name">Add prize</label>
+            <div className="event-config-input-row prize-input-row">
               <input
+                id="new-prize-name"
                 type="text"
                 className="form-input"
                 placeholder="Prize name..."
@@ -289,6 +378,7 @@ export default function OrganizerEventsView() {
                 required
               />
               <input
+                aria-label="Prize value"
                 type="text"
                 className="form-input"
                 placeholder="Value..."
@@ -296,26 +386,32 @@ export default function OrganizerEventsView() {
                 onChange={(e) => setPrizeValue(e.target.value)}
                 style={{ flex: 1 }}
               />
-              <button type="submit" className="btn-secondary btn-sm">Add</button>
+              <button type="submit" className="btn-secondary btn-sm" disabled={!selectedEventId}>Add prize</button>
             </div>
           </form>
 
           {selectedEvent && (
-            <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)' }}>
-              <div className="text-muted-xs" style={{ marginBottom: '0.4rem', fontWeight: 600 }}>
-                Configured Tracks ({selectedEvent.tracks?.length || 0}) & Prizes ({selectedEvent.prizes?.length || 0})
+            <div className="configured-items-section">
+              <h3 className="configured-items-heading">Configured for {selectedEvent.name}</h3>
+              <div className="configured-items-group">
+                <span className="configured-items-label">Tracks</span>
+                <div className="configured-items-list">
+                  {selectedEvent.tracks?.length ? selectedEvent.tracks.map((t) => (
+                    <span key={t._id} className="badge-tag">{t.name}</span>
+                  )) : <span className="text-muted-xs">No tracks yet</span>}
+                </div>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                {selectedEvent.tracks?.map((t) => (
-                  <span key={t._id} className="badge-tag">Track: {t.name}</span>
-                ))}
-                {selectedEvent.prizes?.map((p) => (
-                  <span key={p._id} className="badge-tag" style={{ color: '#f59e0b' }}>Prize: {p.name}</span>
-                ))}
+              <div className="configured-items-group">
+                <span className="configured-items-label">Prizes</span>
+                <div className="configured-items-list">
+                  {selectedEvent.prizes?.length ? selectedEvent.prizes.map((p) => (
+                    <span key={p._id} className="badge-tag prize-tag">{p.name}{p.value ? ` · ${p.value}` : ''}</span>
+                  )) : <span className="text-muted-xs">No prizes yet</span>}
+                </div>
               </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

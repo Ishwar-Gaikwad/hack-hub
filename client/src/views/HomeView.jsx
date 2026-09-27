@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ArrowRight, Clock } from 'lucide-react';
+import { ArrowRight, Clock } from 'lucide-react';
 import EventDetailModal from '../components/EventDetailModal';
 
 export default function HomeView({ onNavigate, onOpenAuth }) {
@@ -35,19 +35,25 @@ export default function HomeView({ onNavigate, onOpenAuth }) {
 
   return (
     <div className="home-minimal-view">
-      {/* Introduction & Primary CTA */}
+      {/* Public product introduction and primary action */}
       <section className="home-intro-section">
-        <h1 className="home-headline">
-          Self-hostable hackathon management platform with zero external dependencies.
-        </h1>
-        <div className="home-cta-row">
-          <button
-            className="btn-primary btn-lg"
-            onClick={() => onNavigate('hackathons')}
-          >
-            <Calendar size={18} />
-            <span>Browse Hackathons</span>
-          </button>
+        <div className="home-hero-content">
+          <span className="home-eyebrow">Self-hosted hackathon management</span>
+          <h1 className="home-headline">
+            The whole hackathon, from kickoff to showcase.
+          </h1>
+          <p className="home-subheadline">
+            From event setup and team formation to project submissions and judging, HackHub brings participants, judges, and organizers through the full lifecycle on infrastructure you control.
+          </p>
+          <div className="home-cta-row">
+            <button
+              className="btn-primary btn-lg"
+              onClick={() => onNavigate('hackathons')}
+            >
+              <span>Browse Hackathons</span>
+              <ArrowRight size={17} />
+            </button>
+          </div>
         </div>
       </section>
 
