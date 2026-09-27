@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { X, LogIn, UserPlus, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -9,14 +9,22 @@ const ROLES = [
   { id: 'admin', label: 'Admin (System Management)' }
 ];
 
-export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
+export default function AuthModal({ isOpen, onClose, initialMode = 'login', initialRole = 'participant' }) {
   const { login, register } = useAuth();
   const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('participant');
+  const [role, setRole] = useState(initialRole);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setRole(initialRole);
+      setError(null);
+    }
+  }, [isOpen, initialMode, initialRole]);
 
   if (!isOpen) return null;
 

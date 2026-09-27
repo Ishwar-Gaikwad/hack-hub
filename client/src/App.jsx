@@ -48,6 +48,7 @@ function AppContent() {
   const [activeView, setActiveView] = useState(getInitialView);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState('login');
+  const [authModalInitialRole, setAuthModalInitialRole] = useState('participant');
 
   // Sync hash routing
   useEffect(() => {
@@ -88,8 +89,9 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const openAuth = (mode = 'login') => {
+  const openAuth = (mode = 'login', role = 'participant') => {
     setAuthModalInitialMode(mode);
+    setAuthModalInitialRole(role);
     setAuthModalOpen(true);
   };
 
@@ -200,6 +202,7 @@ function AppContent() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalInitialMode}
+        initialRole={authModalInitialRole}
       />
     </div>
   );
