@@ -41,6 +41,14 @@ const eventSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
       index: true
+    },
+    votingOpenAt: {
+      type: Date,
+      default: null
+    },
+    votingCloseAt: {
+      type: Date,
+      default: null
     }
   },
   {

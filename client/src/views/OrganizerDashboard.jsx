@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Calendar, PlusCircle, Tag, Award, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { Calendar, PlusCircle, Tag, Award, CheckCircle2, AlertCircle, Clock, ThumbsUp, BarChart3, ShieldAlert } from 'lucide-react';
 
 export default function OrganizerDashboard({ onOpenAuth }) {
   const { currentUser, sessionToken } = useAuth();
@@ -21,6 +21,12 @@ export default function OrganizerDashboard({ onOpenAuth }) {
   const [prizeName, setPrizeName] = useState('');
   const [prizeValue, setPrizeValue] = useState('');
   const [prizeDesc, setPrizeDesc] = useState('');
+
+  // Community Voting Configuration (T3)
+  const [votingOpenAt, setVotingOpenAt] = useState('');
+  const [votingCloseAt, setVotingCloseAt] = useState('');
+  const [metrics, setMetrics] = useState(null);
+  const [votingMsg, setVotingMsg] = useState(null);
 
   // Messages & Loading
   const [eventMsg, setEventMsg] = useState(null);
@@ -57,6 +63,21 @@ export default function OrganizerDashboard({ onOpenAuth }) {
     }
   };
 
+  const fetchMetrics = async (eventId) => {
+    if (!eventId || !sessionToken) return;
+    try {
+      const res = await fetch(`/api/events/${eventId}/metrics`, {
+        headers: { Authorization: `Bearer ${sessionToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMetrics(data);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     fetchEvents();
   }, []);
@@ -64,8 +85,38 @@ export default function OrganizerDashboard({ onOpenAuth }) {
   useEffect(() => {
     if (selectedEventId) {
       fetchEventDetails(selectedEventId);
+      fetchMetrics(selectedEventId);
     }
-  }, [selectedEventId]);
+  }, [selectedEventId, sessionToken]);
+
+  const handleConfigureVoting = async (e) => {
+    e.preventDefault();
+    if (!selectedEventId || !sessionToken) return;
+    setVotingMsg(null);
+    try {
+      const res = await fetch(`/api/events/${selectedEventId}/voting`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionToken}`
+        },
+        body: JSON.stringify({
+          votingOpenAt: votingOpenAt || null,
+          votingCloseAt: votingCloseAt || null
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setVotingMsg({ type: 'success', text: 'Voting window configured successfully!' });
+        fetchEventDetails(selectedEventId);
+        fetchMetrics(selectedEventId);
+      } else {
+        setVotingMsg({ type: 'error', text: data.message || 'Failed to update voting window' });
+      }
+    } catch {
+      setVotingMsg({ type: 'error', text: 'Network error configuring voting window' });
+    }
+  };
 
   if (!currentUser || (currentUser.role !== 'organizer' && currentUser.role !== 'admin')) {
     return (
@@ -373,6 +424,87 @@ export default function OrganizerDashboard({ onOpenAuth }) {
               </button>
             </div>
           </form>
+
+          {/* Community Voting Window Configuration (T3) */}
+          <form onSubmit={handleConfigureVoting} className="form-group-block" style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-subtle)' }}>
+            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <ThumbsUp size={14} color="#6366f1" /> Configure Community Voting Window
+            </label>
+            {votingMsg && (
+              <div className={`alert-box ${votingMsg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: '0.5rem' }}>
+                <span>{votingMsg.text}</span>
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <div>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>Voting Opens At</label>
+                <input
+                  type="datetime-local"
+                  className="form-input"
+                  value={votingOpenAt}
+                  onChange={(e) => setVotingOpenAt(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>Voting Closes At</label>
+                <input
+                  type="datetime-local"
+                  className="form-input"
+                  value={votingCloseAt}
+                  onChange={(e) => setVotingCloseAt(e.target.value)}
+                />
+              </div>
+            </div>
+            <button type="submit" className="btn-secondary btn-sm">
+              Save Voting Window
+            </button>
+          </form>
+
+          {/* Participation & Abuse Protection Metrics (T3.11/T3.12) */}
+          {metrics && (
+            <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '0.75rem' }}>
+                <BarChart3 size={15} color="#818cf8" />
+                <span>Participation & Security Metrics</span>
+              </div>
+
+              <div className="metrics-grid">
+                <div className="metric-card">
+                  <div className="metric-label">Submitted Projects</div>
+                  <div className="metric-value">{metrics.participation?.submittedProjects || 0}</div>
+                </div>
+
+                <div className="metric-card">
+                  <div className="metric-label">Community Votes</div>
+                  <div className="metric-value">{metrics.participation?.totalVotes || 0}</div>
+                </div>
+
+                <div className="metric-card">
+                  <div className="metric-label">Unique Voters</div>
+                  <div className="metric-value">{metrics.participation?.uniqueVoters || 0}</div>
+                </div>
+
+                <div className="metric-card">
+                  <div className="metric-label">Total Comments</div>
+                  <div className="metric-value">{metrics.participation?.totalComments || 0}</div>
+                </div>
+
+                <div className="metric-card">
+                  <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f87171' }}>
+                    <ShieldAlert size={12} /> Duplicate Blocked
+                  </div>
+                  <div className="metric-value" style={{ color: '#f87171' }}>{metrics.security?.duplicateVoteAttempts || 0}</div>
+                </div>
+
+                <div className="metric-card">
+                  <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fbbf24' }}>
+                    <ShieldAlert size={12} /> Rate Limit Triggers
+                  </div>
+                  <div className="metric-value" style={{ color: '#fbbf24' }}>{metrics.security?.rateLimitTriggers || 0}</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Current Event Summary */}
           {selectedEvent && (

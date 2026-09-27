@@ -12,6 +12,7 @@ import inviteRouter from './routes/invite.routes.js';
 import projectRouter from './routes/project.routes.js';
 import judgingRouter from './routes/judging.routes.js';
 import { exportCSV } from './controllers/judging.controller.js';
+import { deleteComment } from './controllers/comment.controller.js';
 import { authenticate } from './middleware/auth.middleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -60,6 +61,10 @@ app.use('/api/projects', projectRouter);
 // Judging & Evaluation routes (T2)
 app.use('/api/judge', judgingRouter);
 app.get('/api/export.csv', authenticate, exportCSV);
+
+// Project Comments moderation & deletion (T3)
+app.delete('/api/comments/:commentId', authenticate, deleteComment);
+app.delete('/comments/:commentId', authenticate, deleteComment);
 
 // Serve static frontend assets if built
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
