@@ -3,6 +3,7 @@ import Project from '../models/project.model.js';
 import User from '../models/user.model.js';
 import Event from '../models/event.model.js';
 import AuditLog from '../models/audit.model.js';
+import Assignment from '../models/assignment.model.js';
 
 /**
  * GET /api/judge/scores
@@ -105,11 +106,29 @@ export async function getJudgeProjects(req, res) {
       });
     }
 
-    // Fetch submitted projects for this event
-    const projects = await Project.find({
+    // Check if judge has an explicit active assignment for this event
+    const assignment = await Assignment.findOne({
+      eventId: targetEvent._id,
+      judgeId: user._id,
+      status: 'active'
+    });
+
+    const projectFilter = {
       eventId: targetEvent._id,
       status: 'submitted'
-    })
+    };
+
+    if (assignment) {
+      if (assignment.trackId && !assignment.assignedAll) {
+        projectFilter.trackId = assignment.trackId;
+      }
+      if (assignment.projectIds?.length > 0 && !assignment.assignedAll) {
+        projectFilter._id = { $in: assignment.projectIds };
+      }
+    }
+
+    // Fetch submitted projects for this event
+    const projects = await Project.find(projectFilter)
       .populate('teamId', 'name')
       .populate('trackId', 'name description')
       .sort({ createdAt: 1 });

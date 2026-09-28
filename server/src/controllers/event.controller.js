@@ -2,6 +2,17 @@ import mongoose from 'mongoose';
 import Event, { EVENT_STATUSES } from '../models/event.model.js';
 import Track from '../models/track.model.js';
 import Prize from '../models/prize.model.js';
+import AuditLog from '../models/audit.model.js';
+
+export const VALID_STATUS_TRANSITIONS = {
+  draft: ['draft', 'published'],
+  published: ['published', 'draft', 'active', 'ended'],
+  active: ['active', 'judging', 'voting', 'ended'],
+  judging: ['judging', 'voting', 'ended', 'active'],
+  voting: ['voting', 'ended', 'judging', 'active'],
+  ended: ['ended', 'closed', 'active'],
+  closed: ['closed']
+};
 
 /**
  * Validate date relationships
@@ -213,14 +224,29 @@ export async function updateEvent(req, res) {
     if (submissionDeadline) event.submissionDeadline = new Date(submissionDeadline);
     if (endDate) event.endDate = new Date(endDate);
 
-    if (status) {
+    const oldStatus = event.status;
+    if (status && status !== oldStatus) {
       if (!EVENT_STATUSES.includes(status)) {
         return res.status(400).json({
           error: 'BadRequest',
           message: `Invalid event status. Supported statuses: ${EVENT_STATUSES.join(', ')}.`
         });
       }
+      const allowedNext = VALID_STATUS_TRANSITIONS[oldStatus] || [];
+      if (!allowedNext.includes(status)) {
+        return res.status(400).json({
+          error: 'BadRequest',
+          message: `Invalid event status transition from '${oldStatus}' to '${status}'.`
+        });
+      }
       event.status = status;
+
+      await AuditLog.create({
+        action: `event.status_${status}`,
+        actorId: req.user._id,
+        eventId: event._id,
+        metadata: { previousStatus: oldStatus, newStatus: status }
+      }).catch(() => {});
     }
 
     await event.save();

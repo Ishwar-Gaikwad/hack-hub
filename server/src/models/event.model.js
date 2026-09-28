@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-export const EVENT_STATUSES = ['draft', 'published', 'active', 'ended', 'closed'];
+export const EVENT_STATUSES = ['draft', 'published', 'active', 'judging', 'voting', 'ended', 'closed'];
 
 const eventSchema = new mongoose.Schema(
   {
@@ -31,7 +31,7 @@ const eventSchema = new mongoose.Schema(
       type: String,
       enum: {
         values: EVENT_STATUSES,
-        message: 'Status must be one of: draft, published, active, ended'
+        message: 'Status must be one of: draft, published, active, judging, voting, ended, closed'
       },
       default: 'published',
       index: true
@@ -47,6 +47,14 @@ const eventSchema = new mongoose.Schema(
       default: null
     },
     votingCloseAt: {
+      type: Date,
+      default: null
+    },
+    resultsPublished: {
+      type: Boolean,
+      default: false
+    },
+    resultsPublishedAt: {
       type: Date,
       default: null
     }

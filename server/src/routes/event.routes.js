@@ -56,6 +56,14 @@ import {
   bulkExportCSV
 } from '../controllers/bulk.controller.js';
 import { getOrganizerJudgingOverview } from '../controllers/judging.controller.js';
+import {
+  getEventJudges,
+  assignJudge,
+  inviteJudge,
+  revokeAssignment,
+  getAvailableJudges,
+  publishResults
+} from '../controllers/assignment.controller.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/role.middleware.js';
 import { voteRateLimiter, commentRateLimiter } from '../middleware/rate-limit.middleware.js';
@@ -108,6 +116,16 @@ router.get('/:eventId/metrics', ...requireStaff, getParticipationMetrics);
 
 // Judging & Fairness Overview (T2 - Staff only)
 router.get('/:eventId/judging/overview', ...requireStaff, getOrganizerJudgingOverview);
+
+// Judge Assignment & Invitation endpoints (Organizer / Staff only)
+router.get('/:eventId/judges', ...requireStaff, getEventJudges);
+router.get('/:eventId/judges/available', ...requireStaff, getAvailableJudges);
+router.post('/:eventId/judges/assign', ...requireStaff, assignJudge);
+router.post('/:eventId/judges/invite', ...requireStaff, inviteJudge);
+router.delete('/:eventId/judges/:judgeId/assignment', ...requireStaff, revokeAssignment);
+
+// Results Publishing (Staff only)
+router.post('/:eventId/results/publish', ...requireStaff, publishResults);
 
 // Event Webhooks (T4)
 router.post('/:eventId/webhooks', ...requireStaff, createWebhook);
