@@ -20,11 +20,12 @@ async function startServer() {
       process.exit(1);
     }
 
-    // Auto-seed if database is empty to guarantee a seeded portal on docker compose up
+    // Auto-seed if database is empty or missing official fixtures to guarantee a seeded portal on docker compose up
     try {
-      const userCount = await User.countDocuments();
-      if (userCount === 0) {
-        console.log('[Server] Database is empty. Seeding official fixtures...');
+      const Project = (await import('./models/project.model.js')).default;
+      const fixtureProject = await Project.findOne({ title: 'Glass Signal' });
+      if (!fixtureProject) {
+        console.log('[Server] Official fixtures not found in database. Seeding official fixtures...');
         await seedDatabase();
       }
     } catch (seedErr) {

@@ -15,6 +15,8 @@ ENV PORT=5000
 
 # Copy root workspace and server package files
 COPY package*.json ./
+COPY fixtures.json* ./
+COPY fixtures.json* ./server/
 COPY server/package*.json ./server/
 
 # Install server dependencies

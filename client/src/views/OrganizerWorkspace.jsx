@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import ProjectDetailModal from '../components/ProjectDetailModal';
-import { ArrowLeft, CalendarDays, Download, Pencil, Plus, Save } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Download, Pencil, Plus, Save, AlertTriangle, CheckCircle, HelpCircle } from 'lucide-react';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -18,6 +18,31 @@ const localDateTime = (value) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 const dateTime = (value) => value ? new Date(value).toLocaleString() : 'Not set';
+
+const formatCriterion = (key) => {
+  const map = {
+    technicalInnovation: 'Technical Innovation',
+    execution: 'Execution',
+    design: 'Design',
+    impact: 'Impact',
+    documentation: 'Documentation',
+    functionality: 'Functionality',
+    quality: 'Quality',
+    innovation: 'Innovation'
+  };
+  return map[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase());
+};
+
+const formatAuditAction = (action) => {
+  const map = {
+    'review.submitted': 'Review submitted',
+    'review.updated': 'Review updated',
+    'assignment.created': 'Assignment created',
+    'score.flagged': 'Score flagged',
+    'result.published': 'Result published'
+  };
+  return map[action] || action;
+};
 
 export default function OrganizerWorkspace({ eventId: initialEventId, initialTab = 'overview', initialNotice = '', onNavigate }) {
   const { currentUser, sessionToken } = useAuth();
@@ -40,6 +65,8 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
   const [itemForm, setItemForm] = useState(null);
   const [notice, setNotice] = useState(initialNotice);
   const [error, setError] = useState('');
+  const [judgingOverview, setJudgingOverview] = useState(null);
+  const [judgingLoading, setJudgingLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
@@ -76,6 +103,7 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
     setEventProjects([]);
     setResults(null);
     setVoting(null);
+    setJudgingOverview(null);
     setError('');
   }, [eventId]);
 
@@ -148,16 +176,31 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
     } finally { setResultsLoading(false); }
   }, [eventId, headers]);
 
+  const loadJudgingOverview = useCallback(async () => {
+    if (!eventId || !sessionToken) return;
+    setJudgingLoading(true);
+    try {
+      const response = await fetch(`/api/events/${eventId}/judging/overview`, { headers });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Could not load judging overview.');
+      setJudgingOverview(data);
+    } catch (err) { setError(err.message); }
+    finally { setJudgingLoading(false); }
+  }, [eventId, headers, sessionToken]);
+
   useEffect(() => {
     if (!eventId) return;
     loadMetricsAndScores().catch((err) => setError(err.message));
   }, [eventId, loadMetricsAndScores]);
   useEffect(() => {
-    if (tab === 'Submissions') loadSubmissions().catch((err) => setError(err.message));
+    if (tab.toLowerCase() === 'submissions') loadSubmissions().catch((err) => setError(err.message));
   }, [tab, loadSubmissions]);
   useEffect(() => {
-    if (tab === 'Results') loadResults().catch((err) => setError(err.message));
+    if (tab.toLowerCase() === 'results') loadResults().catch((err) => setError(err.message));
   }, [tab, loadResults]);
+  useEffect(() => {
+    if (tab.toLowerCase() === 'judging') loadJudgingOverview().catch((err) => setError(err.message));
+  }, [tab, loadJudgingOverview]);
 
   const reviewedProjects = new Set(scores.map((score) => idOf(score.projectId)).filter(Boolean));
   const scoredJudges = useMemo(() => {
@@ -220,7 +263,7 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
     if (!response.ok) { setError(data.message || 'Could not update voting schedule.'); return; }
     setNotice('Voting schedule saved.');
     await loadEvent();
-    if (tab === 'Results') await loadResults();
+    if (tab.toLowerCase() === 'results') await loadResults();
   };
 
   const openEventForm = () => setEventForm({ name: event.name || '', description: event.description || '', startDate: localDateTime(event.startDate), submissionDeadline: localDateTime(event.submissionDeadline), endDate: localDateTime(event.endDate), status: event.status });
@@ -282,7 +325,270 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
 
     {tab.toLowerCase() === 'judges' && <section className="workspace-card organizer-info-panel"><h2>Judges</h2>{analyticsLoading ? <p>Loading judge activity…</p> : scoredJudges.length ? <><p>These judges have submitted at least one score for this hackathon.</p><div className="organizer-table"><div className="organizer-table-head"><span>Judge</span><span>Recorded reviews</span><span>Status</span></div>{scoredJudges.map((judge) => <div className="organizer-table-row" key={judge.id}><span>{judge.email}</span><span>{judge.reviews}</span><span>Active</span></div>)}</div></> : <p>No judges have recorded scores for this event yet.</p>}<p className="organizer-capability-note">Judge invitations and assignments are not supported by the current API.</p></section>}
 
-    {tab.toLowerCase() === 'judging' && <section className="workspace-card organizer-info-panel"><h2>Judging activity</h2>{analyticsLoading ? <p>Loading judging activity…</p> : <><p>{reviewedProjects.size} of {eventProjects.length} submitted projects have at least one recorded score.</p><p>{scores.length} total score records · {scoredJudges.length} judges with recorded activity.</p></>}<p className="organizer-capability-note">The current API does not expose review quotas or assignment targets, so review completion targets cannot be determined.</p>{!analyticsLoading && scoredJudges.length > 0 && <div className="organizer-table"><div className="organizer-table-head"><span>Judge</span><span>Recorded reviews</span><span /></div>{scoredJudges.map((judge) => <div className="organizer-table-row" key={judge.id}><span>{judge.email}</span><span>{judge.reviews}</span><span /></div>)}</div>}</section>}
+    {tab.toLowerCase() === 'judging' && (
+      <div className="judging-control-center">
+        {/* Section Heading & Actions */}
+        <section className="workspace-card organizer-info-panel">
+          <div className="judging-section-heading">
+            <div>
+              <h2>Judging Control Center</h2>
+              <p>Track real-time progress, review score discrepancies, and inspect normalized rankings.</p>
+            </div>
+            <button className="btn-secondary btn-sm" onClick={() => downloadCsv('judging')}>
+              <Download size={14} /> Export Judging CSV
+            </button>
+          </div>
+
+          {judgingLoading ? (
+            <div className="empty-loading-state">Loading judging control center…</div>
+          ) : !judgingOverview ? (
+            <p>No judging data available yet for this event.</p>
+          ) : (
+            <>
+              {/* Progress Bar & KPIs */}
+              <div className="judging-kpi-grid">
+                <div className="judging-kpi-card">
+                  <span className="judging-kpi-num">{judgingOverview.progress?.totalAssignments ?? 0}</span>
+                  <span className="judging-kpi-label">Total assignments</span>
+                </div>
+                <div className="judging-kpi-card">
+                  <span className="judging-kpi-num">{judgingOverview.progress?.completedReviews ?? 0}</span>
+                  <span className="judging-kpi-label">Completed reviews</span>
+                </div>
+                <div className="judging-kpi-card">
+                  <span className="judging-kpi-num">{judgingOverview.progress?.pendingReviews ?? 0}</span>
+                  <span className="judging-kpi-label">Pending reviews</span>
+                </div>
+                <div className="judging-kpi-card">
+                  <span className="judging-kpi-num">{judgingOverview.progress?.completionPercentage ?? 0}%</span>
+                  <span className="judging-kpi-label">Completion rate</span>
+                </div>
+              </div>
+
+              <div className="judging-progress-bar-container">
+                <div className="judging-progress-meta">
+                  <span>
+                    <strong>{judgingOverview.progress?.completedReviews ?? 0}</strong> of{' '}
+                    {judgingOverview.progress?.totalAssignments ?? 0} reviews completed
+                  </span>
+                  <span>
+                    {judgingOverview.progress?.reviewedProjectsCount ?? 0} of{' '}
+                    {judgingOverview.progress?.totalProjects ?? 0} submitted projects evaluated
+                  </span>
+                </div>
+                <div className="judging-progress-track">
+                  <div
+                    className="judging-progress-fill"
+                    style={{ width: `${judgingOverview.progress?.completionPercentage ?? 0}%` }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+
+        {judgingOverview && (
+          <>
+            {/* Projects Requiring Attention */}
+            <section className="workspace-card organizer-info-panel">
+              <div className="judging-section-heading">
+                <div>
+                  <h2>Projects requiring attention</h2>
+                  <p>Evaluations with large reviewer differences or insufficient review coverage.</p>
+                </div>
+              </div>
+
+              <div className="judging-attention-container">
+                {/* Discrepancies */}
+                {judgingOverview.attention?.discrepancies?.map((item, idx) => (
+                  <div key={`disc-${idx}`} className="judging-alert-card discrepancy-card">
+                    <div className="judging-alert-header">
+                      <h4>Project: {item.projectTitle} · {formatCriterion(item.criterion)}</h4>
+                      <span className="judging-badge badge-warning">
+                        ⚠ Review difference: {item.diff.toFixed(1)}
+                      </span>
+                    </div>
+                    <div className="judging-comparison">
+                      {item.scores.map((s, sIdx) => (
+                        <span key={sIdx} className="judge-score-pill">
+                          <strong>{s.judgeLabel}:</strong> {s.score}/10
+                        </span>
+                      ))}
+                    </div>
+                    <p className="judging-alert-hint">
+                      Evaluations differ by {item.diff.toFixed(1)} points (threshold &gt; 2.0). Reviewers may have applied different standards.
+                    </p>
+                  </div>
+                ))}
+
+                {/* Insufficient reviews */}
+                {judgingOverview.attention?.insufficientReviews?.map((item, idx) => (
+                  <div key={`insuf-${idx}`} className="judging-alert-card insufficient-card">
+                    <div className="judging-alert-header">
+                      <h4>Project: {item.projectTitle}</h4>
+                      <span className="judging-badge badge-info">Needs review</span>
+                    </div>
+                    <p className="judging-alert-hint">
+                      {item.reviewCount === 0
+                        ? 'No evaluations recorded yet'
+                        : `${item.reviewCount} evaluation recorded`}{' '}
+                      (minimum 2 recommended for fair evaluation).
+                    </p>
+                  </div>
+                ))}
+
+                {(!judgingOverview.attention?.discrepancies?.length &&
+                  !judgingOverview.attention?.insufficientReviews?.length) && (
+                  <div className="judging-healthy-banner">
+                    <CheckCircle size={18} />
+                    <span>All submitted projects have consistent evaluations and adequate review coverage.</span>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Judge Progress */}
+            <section className="workspace-card organizer-info-panel">
+              <div className="judging-section-heading">
+                <div>
+                  <h2>Judge progress</h2>
+                  <p>Individual completion metrics and scoring patterns.</p>
+                </div>
+              </div>
+
+              {judgingOverview.judgeProgress?.length ? (
+                <div className="organizer-table">
+                  <div className="organizer-table-head judging-judge-head">
+                    <span>Judge</span>
+                    <span>Assigned</span>
+                    <span>Completed</span>
+                    <span>Remaining</span>
+                    <span>Avg score</span>
+                    <span>Status</span>
+                  </div>
+                  {judgingOverview.judgeProgress.map((judge) => (
+                    <div className="organizer-table-row judging-judge-row" key={judge.judgeId}>
+                      <span><strong>{judge.judgeLabel}</strong></span>
+                      <span>{judge.assigned}</span>
+                      <span>{judge.completed}</span>
+                      <span>{judge.remaining}</span>
+                      <span>{judge.averageScore ? `${judge.averageScore} / 10` : '—'}</span>
+                      <span>
+                        {judge.isZeroVariance ? (
+                          <span
+                            className="judging-badge badge-warning"
+                            title="Judge scored all projects identically (std dev 0). Scores are mapped fairly without division error."
+                          >
+                            Uniform scoring (fairly mapped)
+                          </span>
+                        ) : (
+                          <span className="judging-badge badge-success">Active</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="organizer-empty-inline">No judges assigned or active for this event.</p>
+              )}
+            </section>
+
+            {/* Fairness & Normalization Leaderboard */}
+            <section className="workspace-card organizer-info-panel">
+              <div className="judging-section-heading">
+                <div>
+                  <h2>Final ranking preview</h2>
+                  <p>Normalized scores balance strict and lenient judges for fair results.</p>
+                </div>
+              </div>
+
+              <div className="judging-explain-box">
+                Scores are adjusted using Z-score normalization to account for differences between strict and lenient judges, then mapped to a 0–100 scale. If 3 or more evaluations exist, a trimmed mean is applied to mitigate outlier impact. Zero-variance judges are mapped linearly without division errors.
+              </div>
+
+              {judgingOverview.leaderboard?.length ? (
+                <div className="organizer-table">
+                  <div className="organizer-table-head judging-leaderboard-head">
+                    <span>Rank</span>
+                    <span>Project & Team</span>
+                    <span>Track</span>
+                    <span>Reviews</span>
+                    <span>Raw score</span>
+                    <span>Adjusted score</span>
+                    <span>Final score</span>
+                    <span>Status</span>
+                  </div>
+                  {judgingOverview.leaderboard.map((item) => (
+                    <div className="organizer-table-row judging-leaderboard-row" key={item.projectId}>
+                      <span><strong>#{item.rank}</strong></span>
+                      <span>
+                        <strong>{item.title}</strong>
+                        {item.teamName && <small>{item.teamName}</small>}
+                      </span>
+                      <span>{item.trackName || 'General'}</span>
+                      <span>{item.reviewCount}</span>
+                      <span>{item.rawScore.toFixed(1)} / 100</span>
+                      <span>{item.normalizedScore.toFixed(1)} / 100</span>
+                      <span><strong>{item.finalScore.toFixed(1)} / 100</strong></span>
+                      <span>
+                        {item.hasDiscrepancy ? (
+                          <span className="judging-badge badge-warning">Needs attention</span>
+                        ) : item.reviewCount >= 2 ? (
+                          <span className="judging-badge badge-success">Consistent</span>
+                        ) : (
+                          <span className="judging-badge badge-neutral">Incomplete</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="organizer-empty-inline">No evaluated projects yet.</p>
+              )}
+            </section>
+
+            {/* Judging Audit Trail */}
+            <section className="workspace-card organizer-info-panel">
+              <div className="judging-section-heading">
+                <div>
+                  <h2>Judging audit trail</h2>
+                  <p>Recorded evaluation actions, updates, and score events.</p>
+                </div>
+              </div>
+
+              {judgingOverview.auditTrail?.length ? (
+                <div className="organizer-table">
+                  <div className="organizer-table-head judging-audit-head">
+                    <span>Time</span>
+                    <span>Action</span>
+                    <span>Role</span>
+                    <span>Details</span>
+                  </div>
+                  {judgingOverview.auditTrail.map((log) => (
+                    <div className="organizer-table-row judging-audit-row" key={log.id}>
+                      <span><small>{dateTime(log.timestamp)}</small></span>
+                      <span><strong>{formatAuditAction(log.action)}</strong></span>
+                      <span><span className="badge-role">{log.actorRole}</span></span>
+                      <span>
+                        <small>
+                          {log.details?.projectTitle
+                            ? `Project: ${log.details.projectTitle}`
+                            : log.details?.scoreId
+                            ? `Score ID: ${log.details.scoreId}`
+                            : 'Evaluation event recorded'}
+                        </small>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="organizer-empty-inline">No judging audit events recorded yet.</p>
+              )}
+            </section>
+          </>
+        )}
+      </div>
+    )}
 
     {tab.toLowerCase() === 'results' && <section className="workspace-card organizer-info-panel"><div className="organizer-section-heading"><div><h2>Community vote results</h2><p>Rankings below are based on community votes, not judge scores.</p></div></div>
       {resultsLoading ? <p>Loading community results…</p> : results?.resultsHidden ? <p>{results.message || 'Results are hidden while voting is open.'}</p> : results?.results?.length ? <div className="organizer-table"><div className="organizer-table-head"><span>Rank / Project</span><span>Team · Track</span><span>Votes</span></div>{results.results.map((item) => <div className="organizer-table-row" key={idOf(item.projectId)}><span>#{item.rank} · {item.title}</span><span>{item.teamName} · {item.trackName}</span><span>{item.votes}</span></div>)}</div> : <p>{voting?.isOpen ? 'Voting is open; no results are available yet.' : 'No community vote results are available.'}</p>}

@@ -55,6 +55,7 @@ import {
   bulkExportFull,
   bulkExportCSV
 } from '../controllers/bulk.controller.js';
+import { getOrganizerJudgingOverview } from '../controllers/judging.controller.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/role.middleware.js';
 import { voteRateLimiter, commentRateLimiter } from '../middleware/rate-limit.middleware.js';
@@ -104,6 +105,9 @@ router.post('/:eventId/projects/:projectId/comments', authenticate, commentRateL
 // Audit & Abuse Protection Metrics (T3 - Staff only)
 router.get('/:eventId/audit-logs', ...requireStaff, getAuditLogs);
 router.get('/:eventId/metrics', ...requireStaff, getParticipationMetrics);
+
+// Judging & Fairness Overview (T2 - Staff only)
+router.get('/:eventId/judging/overview', ...requireStaff, getOrganizerJudgingOverview);
 
 // Event Webhooks (T4)
 router.post('/:eventId/webhooks', ...requireStaff, createWebhook);

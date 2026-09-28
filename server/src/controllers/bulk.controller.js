@@ -231,6 +231,36 @@ export async function bulkExportCSV(req, res) {
       return res.status(200).send(csvRows.join('\n'));
     }
 
+    if (type === 'judging' || type === 'scores') {
+      const projects = await Project.find({ eventId }).select('_id').lean();
+      const projectIds = projects.map(p => p._id);
+      const scores = await Score.find({ projectId: { $in: projectIds } })
+        .populate('projectId', 'title')
+        .populate('judgeId', 'email')
+        .lean();
+      const csvRows = ['Score ID,Project Title,Judge Email,Technical Innovation,Execution,Design,Impact,Documentation,Weighted Total,Comments,Submitted At'];
+      for (const s of scores) {
+        const c = s.criteria || {};
+        const row = [
+          s._id,
+          `"${(s.projectId?.title || '').replace(/"/g, '""')}"`,
+          `"${(s.judgeId?.email || '').replace(/"/g, '""')}"`,
+          c.technicalInnovation ?? c.functionality ?? '',
+          c.execution ?? c.quality ?? '',
+          c.design ?? '',
+          c.impact ?? '',
+          c.documentation ?? '',
+          s.weightedTotal ?? '',
+          `"${(s.comments || '').replace(/"/g, '""')}"`,
+          s.createdAt ? new Date(s.createdAt).toISOString() : ''
+        ].join(',');
+        csvRows.push(row);
+      }
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="event-${eventId}-judging.csv"`);
+      return res.status(200).send(csvRows.join('\n'));
+    }
+
     // Default: export projects CSV
     const projects = await Project.find({ eventId })
       .populate('teamId', 'name')

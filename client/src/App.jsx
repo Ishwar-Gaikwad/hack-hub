@@ -17,6 +17,7 @@ import OrganizerEventsView from './views/OrganizerEventsView';
 import OrganizerWorkspace from './views/OrganizerWorkspace';
 import AdminView from './views/AdminView';
 import DeveloperDiagnosticsView from './views/DeveloperDiagnosticsView';
+import JudgeDashboard from './views/JudgeDashboard';
 import PlaceholderView from './views/PlaceholderView';
 
 const ROLE_VIEWS = {
@@ -175,17 +176,8 @@ function AppContent() {
         )}
 
         {/* Judge Views */}
-        {visibleView === 'assigned-projects' && (
-          <PlaceholderView
-            title="Assigned Projects"
-            description="Projects assigned to your judge queue for review."
-          />
-        )}
-        {visibleView === 'reviews' && (
-          <PlaceholderView
-            title="Reviews & Scoring"
-            description="Structured rubric criteria and scorecards."
-          />
+        {['assigned-projects', 'reviews'].includes(visibleView) && (
+          <JudgeDashboard onOpenAuth={openAuthModal} />
         )}
 
         {/* Organizer Views */}
