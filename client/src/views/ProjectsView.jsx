@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import ProjectDetailModal from '../components/ProjectDetailModal';
 import { useAuth } from '../context/AuthContext';
+import { getFriendlyErrorMessage } from '../utils/formatters';
 
 export default function ProjectsView() {
   const { currentUser, sessionToken } = useAuth();
@@ -34,6 +35,7 @@ export default function ProjectsView() {
   const [viewResultsMode, setViewResultsMode] = useState(false);
   const [resultsData, setResultsData] = useState(null);
   const [voteError, setVoteError] = useState('');
+  const [voteNotice, setVoteNotice] = useState('');
 
   // Fetch events for filtering
   const fetchEvents = async () => {
@@ -208,12 +210,13 @@ export default function ProjectsView() {
           }
           return updated;
         });
+        setVoteNotice(hasVoted ? 'Vote retracted.' : 'Vote recorded! Thank you for supporting this project.');
         fetchVotingStatus(selectedEventId);
       } else {
-        setVoteError(data.message || data.error || 'Vote action failed');
+        setVoteError(getFriendlyErrorMessage(data.message || data.error, 'Vote action could not be processed.'));
       }
-    } catch {
-      setVoteError('Network error while processing vote');
+    } catch (err) {
+      setVoteError(getFriendlyErrorMessage(err, 'Network error while processing vote.'));
     }
   };
 
@@ -291,11 +294,25 @@ export default function ProjectsView() {
         </div>
       )}
 
+      {/* Vote Notice Confirmation Banner */}
+      {voteNotice && (
+        <div style={{ padding: '0.65rem 1rem', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.35)', borderRadius: '6px', color: '#86efac', fontSize: '0.85rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={15} color="#4ade80" />
+            <span>{voteNotice}</span>
+          </div>
+          <button type="button" onClick={() => setVoteNotice('')} style={{ background: 'none', border: 'none', color: '#86efac', cursor: 'pointer', fontSize: '0.8rem' }}>&times;</button>
+        </div>
+      )}
+
       {/* Vote Error Feedback Banner */}
       {voteError && (
-        <div style={{ padding: '0.65rem 1rem', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#fca5a5', fontSize: '0.85rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <AlertCircle size={15} />
-          <span>{voteError}</span>
+        <div style={{ padding: '0.65rem 1rem', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#fca5a5', fontSize: '0.85rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={15} />
+            <span>{voteError}</span>
+          </div>
+          <button type="button" onClick={() => setVoteError('')} style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '0.8rem' }}>&times;</button>
         </div>
       )}
 
@@ -439,10 +456,26 @@ export default function ProjectsView() {
         loading ? (
           <div className="empty-loading-state">Loading submitted projects...</div>
         ) : projects.length === 0 ? (
-          <div className="empty-state-card">
-            <FolderGit2 size={40} color="var(--text-muted)" />
-            <h3>No Projects Match Your Search</h3>
-            <p>Try refining your search keyword or clearing event/track filters.</p>
+          <div className="empty-state-card" style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
+            <FolderGit2 size={40} color="var(--text-muted)" style={{ margin: '0 auto 0.75rem', opacity: 0.6 }} />
+            <h3 style={{ marginBottom: '0.35rem', color: 'var(--text-primary)' }}>
+              {searchQuery || selectedTrackId ? 'No projects match your filter' : 'No projects submitted yet'}
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto', fontSize: '0.88rem' }}>
+              {searchQuery || selectedTrackId
+                ? 'Try clearing your search keyword or switching track filters to explore more projects.'
+                : 'Projects will appear here after participants submit their projects to this hackathon.'}
+            </p>
+            {(searchQuery || selectedTrackId) && (
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={handleClearFilters}
+                style={{ marginTop: '1rem' }}
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
         ) : (
           <div className="cards-grid">

@@ -21,6 +21,13 @@ export async function bulkImport(req, res) {
       return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
     }
 
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only import data into events you host'
+      });
+    }
+
     if (!Array.isArray(teams) || !Array.isArray(projects)) {
       return res.status(400).json({
         error: 'ValidationError',
@@ -35,21 +42,41 @@ export async function bulkImport(req, res) {
       });
     }
 
+    if (teams.length + projects.length > 500) {
+      return res.status(400).json({
+        error: 'PayloadTooLarge',
+        message: 'Bulk import payload cannot exceed 500 combined entities'
+      });
+    }
+
     // Step 1: Pre-validate all team records
     const validationErrors = [];
+    const seenTeamNames = new Set();
+
     teams.forEach((t, idx) => {
       if (!t.name || typeof t.name !== 'string' || t.name.trim().length < 2) {
         validationErrors.push(`Team at index ${idx}: Name is required and must be at least 2 characters`);
+      } else {
+        const lower = t.name.trim().toLowerCase();
+        if (seenTeamNames.has(lower)) {
+          validationErrors.push(`Duplicate team name "${t.name.trim()}" in import payload`);
+        }
+        seenTeamNames.add(lower);
       }
     });
 
-    // Step 2: Pre-validate all project records
-    const tracks = await Track.find({ eventId: event._id });
-    const defaultTrack = tracks[0] || await Track.create({ eventId: event._id, name: 'General' });
+    // Step 2: Pre-validate all project records (read-only, no mutations)
+    const tracks = await Track.find({ eventId: event._id }).lean();
 
     projects.forEach((p, idx) => {
       if (!p.title || typeof p.title !== 'string' || p.title.trim().length < 2) {
         validationErrors.push(`Project at index ${idx}: Title is required and must be at least 2 characters`);
+      }
+      if (p.trackId) {
+        const trackMatches = tracks.some(tr => tr._id.toString() === p.trackId.toString());
+        if (!trackMatches) {
+          validationErrors.push(`Project at index ${idx}: Specified trackId does not belong to this event`);
+        }
       }
     });
 
@@ -73,7 +100,10 @@ export async function bulkImport(req, res) {
       });
     }
 
-    // Step 3: Transactional creation
+    // Step 3: Transactional creation (only executes if validation completely passed)
+    const existingTracks = await Track.find({ eventId: event._id });
+    const defaultTrack = existingTracks[0] || await Track.create({ eventId: event._id, name: 'General' });
+
     const createdTeams = [];
     const teamNameToDocMap = new Map();
 
@@ -158,6 +188,13 @@ export async function bulkExportFull(req, res) {
       return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
     }
 
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only export events you host'
+      });
+    }
+
     const [tracks, prizes, teams, projects, scores, voteCount] = await Promise.all([
       Track.find({ eventId }).lean(),
       Prize.find({ eventId }).lean(),
@@ -223,6 +260,13 @@ export async function bulkExportCSV(req, res) {
     const event = await Event.findById(eventId);
     if (!event) {
       return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
+    }
+
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only export events you host'
+      });
     }
 
     if (type === 'teams') {

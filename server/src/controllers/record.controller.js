@@ -48,6 +48,19 @@ export async function getJudgingRecord(req, res) {
       return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
     }
 
+    const isOrganizerOwner = req.user && (
+      req.user.role === 'admin' ||
+      (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() === req.user._id.toString())
+    );
+
+    // If event is in active judging state and requester is not event owner, seal records
+    if ((event.status === 'judging' || event.status === 'active') && !isOrganizerOwner && !event.resultsPublished) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Judging is currently in progress. Official judging records are sealed until results are published.'
+      });
+    }
+
     const projects = await Project.find({ eventId, status: 'submitted' }).lean();
     const scores = await Score.find({ eventId }).lean();
 

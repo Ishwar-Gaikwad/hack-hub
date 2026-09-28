@@ -12,7 +12,7 @@ import inviteRouter from './routes/invite.routes.js';
 import projectRouter from './routes/project.routes.js';
 import judgingRouter from './routes/judging.routes.js';
 import { exportCSV } from './controllers/judging.controller.js';
-import { deleteComment } from './controllers/comment.controller.js';
+import { deleteComment, updateComment } from './controllers/comment.controller.js';
 import { getEmbedGalleryHtml, getEmbedGalleryJson } from './controllers/embed.controller.js';
 import { getOpenApiSpec, getApiDocsHtml } from './controllers/openapi.controller.js';
 import { authenticate } from './middleware/auth.middleware.js';
@@ -65,6 +65,8 @@ app.use('/api/judge', judgingRouter);
 app.get('/api/export.csv', authenticate, exportCSV);
 
 // Project Comments moderation & deletion (T3)
+app.put('/api/comments/:commentId', authenticate, updateComment);
+app.put('/comments/:commentId', authenticate, updateComment);
 app.delete('/api/comments/:commentId', authenticate, deleteComment);
 app.delete('/comments/:commentId', authenticate, deleteComment);
 

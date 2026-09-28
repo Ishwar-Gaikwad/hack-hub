@@ -26,6 +26,13 @@ export async function createPrize(req, res) {
       });
     }
 
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only add prizes to events you host.'
+      });
+    }
+
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return res.status(400).json({
         error: 'BadRequest',
@@ -103,6 +110,21 @@ export async function updatePrize(req, res) {
       return res.status(400).json({
         error: 'BadRequest',
         message: 'Invalid event ID or prize ID format.'
+      });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        error: 'NotFound',
+        message: 'Event not found.'
+      });
+    }
+
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only update prizes for events you host.'
       });
     }
 

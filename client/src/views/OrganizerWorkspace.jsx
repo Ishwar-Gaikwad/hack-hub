@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext';
 import ProjectDetailModal from '../components/ProjectDetailModal';
 import CertificateModal from '../components/CertificateModal';
+import { getFriendlyErrorMessage } from '../utils/formatters';
 import {
   ArrowLeft,
   CalendarDays,
@@ -14,6 +15,7 @@ import {
   HelpCircle,
   UserPlus,
   Trash2,
+  FolderGit2,
   ExternalLink,
   ShieldCheck,
   ChevronRight,
@@ -736,7 +738,7 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
         setAssignModalOpen(false);
       }
 
-      setNotice('Judge assigned successfully.');
+      setNotice('Judge assigned. The judge has been assigned to this event.');
       await loadEventJudges();
       await loadJudgingOverview();
     } catch (err) {
@@ -834,7 +836,8 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch (err) { setError(err.message); }
+      setNotice('Export ready. CSV file has been downloaded.');
+    } catch (err) { setError(getFriendlyErrorMessage(err, 'CSV export failed.')); }
   };
 
   const saveEvent = async (e) => {
@@ -893,6 +896,23 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
   if (loading && !event) return <div className="page-view-container empty-loading-state">Loading hackathon…</div>;
   if (error && !event) return <div className="page-view-container"><div className="event-date-error" role="alert">{error}</div><button className="text-button" onClick={() => onNavigate('my-events')}>Back to My Hackathons</button></div>;
   if (!event) return null;
+
+  // Operational Health Computations (Section 5 requirements)
+  const submittedCount = metrics?.participation?.submittedProjects ?? eventProjects.length ?? 0;
+  const submissionStatusText = event.status === 'active' || event.status === 'published' ? 'Accepting Submissions' : 'Submissions Closed';
+  const totalReviewsRecorded = scores.length;
+  const scoredProjectsCount = judgingOverview?.summary?.scoredProjectsCount ?? (eventProjects.filter(p => scores.some(s => idOf(s.projectId) === idOf(p))).length);
+  const totalProjectsToJudge = eventProjects.length || (metrics?.participation?.submittedProjects ?? 0);
+  const judgingPct = totalProjectsToJudge > 0 ? Math.min(100, Math.round((scoredProjectsCount / totalProjectsToJudge) * 100)) : 0;
+  const now = Date.now();
+  const votingOpen = event.votingOpenAt && new Date(event.votingOpenAt).getTime() <= now && (!event.votingCloseAt || new Date(event.votingCloseAt).getTime() >= now);
+  const votingClosed = event.votingCloseAt && new Date(event.votingCloseAt).getTime() < now;
+  const votingScheduled = event.votingOpenAt && new Date(event.votingOpenAt).getTime() > now;
+  const votingStateLabel = votingOpen ? 'Active / Open' : votingClosed ? 'Closed' : votingScheduled ? 'Scheduled' : 'Not Configured';
+  const discrepanciesCount = judgingOverview?.attention?.discrepancies?.length || 0;
+  const insufficientCount = judgingOverview?.attention?.insufficientReviews?.length || 0;
+  const totalWarnings = discrepanciesCount + insufficientCount + (incompleteJudgesCount > 0 ? 1 : 0);
+  const resultsStateLabel = event.resultsPublished ? 'Published' : (judgingPct >= 100 && totalProjectsToJudge > 0 ? 'Ready to Publish' : 'Draft / In Progress');
 
   return <div className="page-view-container organizer-workspace">
     <div className="workspace-event-heading">
@@ -959,6 +979,80 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
         Tab: Overview
         ======================================================== */}
     {tab.toLowerCase() === 'overview' && <>
+      {/* OPERATIONAL HEALTH PANEL (5 Core Dimensions) */}
+      <section className="workspace-card" style={{ marginBottom: '1.5rem', padding: '1.35rem 1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <span style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', fontWeight: 600 }}>
+              Operational Health
+            </span>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0.15rem 0 0', color: 'var(--text-primary)' }}>
+              Live Hackathon Vitals
+            </h2>
+          </div>
+          <span className={`badge-tag ${event.status === 'active' ? 'badge-submitted' : ''}`}>
+            Current Phase: {event.status.toUpperCase()}
+          </span>
+        </div>
+
+        <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.85rem' }}>
+          {/* 1. Submission progress */}
+          <div className="metric-card" style={{ padding: '0.85rem 1rem' }}>
+            <div className="metric-label">Submission Progress</div>
+            <div className="metric-value" style={{ fontSize: '1.35rem' }}>
+              {submittedCount} {submittedCount === 1 ? 'Project' : 'Projects'}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              {submissionStatusText}
+            </div>
+          </div>
+
+          {/* 2. Judging progress */}
+          <div className="metric-card" style={{ padding: '0.85rem 1rem' }}>
+            <div className="metric-label">Judging Progress</div>
+            <div className="metric-value" style={{ fontSize: '1.35rem', color: '#4D2FF9' }}>
+              {judgingPct}% Evaluated
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              {totalReviewsRecorded} review{totalReviewsRecorded === 1 ? '' : 's'} across {assignedJudges.length || scoredJudges.length} judge{assignedJudges.length === 1 ? '' : 's'}
+            </div>
+          </div>
+
+          {/* 3. Voting state */}
+          <div className="metric-card" style={{ padding: '0.85rem 1rem' }}>
+            <div className="metric-label">Voting State</div>
+            <div className="metric-value" style={{ fontSize: '1.35rem', color: votingOpen ? '#10b981' : votingClosed ? 'var(--text-muted)' : '#f59e0b' }}>
+              {votingStateLabel}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              {votingOpen ? `Closes ${dateTime(event.votingCloseAt)}` : votingScheduled ? `Opens ${dateTime(event.votingOpenAt)}` : 'Community ballot'}
+            </div>
+          </div>
+
+          {/* 4. Warnings */}
+          <div className="metric-card" style={{ padding: '0.85rem 1rem' }}>
+            <div className="metric-label">Warnings</div>
+            <div className="metric-value" style={{ fontSize: '1.35rem', color: totalWarnings > 0 ? '#ef4444' : '#10b981' }}>
+              {totalWarnings > 0 ? `${totalWarnings} Alert${totalWarnings === 1 ? '' : 's'}` : '0 Warnings'}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              {totalWarnings > 0 ? 'Actionable items need review' : 'All systems healthy'}
+            </div>
+          </div>
+
+          {/* 5. Results state */}
+          <div className="metric-card" style={{ padding: '0.85rem 1rem' }}>
+            <div className="metric-label">Results State</div>
+            <div className="metric-value" style={{ fontSize: '1.35rem', color: event.resultsPublished ? '#10b981' : '#6366f1' }}>
+              {resultsStateLabel}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              {event.resultsPublished ? 'Visible in public gallery' : 'Private to organizers'}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="workspace-card organizer-overview-panel">
         <div className="organizer-section-heading">
           <h2>Overview</h2>
@@ -1170,7 +1264,17 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
           ))}
         </div>
       ) : (
-        <p className="organizer-empty-inline">No submissions match the selected filters.</p>
+        <div className="workspace-card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <FolderGit2 size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.6 }} />
+          <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+            {projects.length === 0 ? 'No projects submitted yet' : 'No submissions match your filter'}
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto' }}>
+            {projects.length === 0
+              ? 'Projects will appear here after participants submit their project work.'
+              : 'Try clearing your status, track, or team search filters.'}
+          </p>
+        </div>
       )}
     </section>}
 
@@ -1256,9 +1360,16 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
           })}
         </div>
       ) : (
-        <p className="organizer-empty-inline">
-          No judges assigned to this hackathon yet. Click <strong>Invite / Assign Judge</strong> to assign evaluators.
-        </p>
+        <div className="workspace-card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <UserPlus size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.6 }} />
+          <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.35rem' }}>No judges assigned yet</h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto 1rem' }}>
+            Click &ldquo;Invite / Assign Judge&rdquo; above to assign evaluators to tracks and submitted projects.
+          </p>
+          <button className="btn-primary btn-sm" onClick={handleOpenAssignModal} style={{ margin: '0 auto' }}>
+            <UserPlus size={14} /> Assign First Judge
+          </button>
+        </div>
       )}
     </section>}
 

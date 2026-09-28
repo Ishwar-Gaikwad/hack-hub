@@ -192,6 +192,13 @@ export async function updateEvent(req, res) {
       });
     }
 
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only update events you host.'
+      });
+    }
+
     const { name, description, startDate, submissionDeadline, endDate, status } = req.body;
 
     const newStart = startDate || event.startDate;

@@ -14,7 +14,19 @@ export async function getAuditLogs(req, res) {
   const { action, limit = 50, page = 1 } = req.query;
 
   try {
-    const query = { eventId };
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
+    }
+
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only view audit logs for events you host'
+      });
+    }
+
+    const query = { eventId: event._id };
     if (action) {
       query.action = action;
     }
@@ -65,6 +77,13 @@ export async function getParticipationMetrics(req, res) {
     const event = await Event.findById(eventId);
     if (!event) {
       return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
+    }
+
+    if (req.user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You can only view metrics for events you host'
+      });
     }
 
     const [totalProjects, submittedProjects, totalVotes, uniqueVoters, totalComments, rateLimitEvents, duplicateAttempts] = await Promise.all([

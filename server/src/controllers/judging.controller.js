@@ -48,6 +48,16 @@ export async function getJudgeScores(req, res) {
     const filter = {};
     if (user.role === 'judge') {
       filter.judgeId = user._id;
+    } else if (user.role === 'organizer') {
+      const myEvents = await Event.find({ createdBy: user._id }).select('_id');
+      const myEventIds = myEvents.map(e => e._id);
+      filter.eventId = { $in: myEventIds };
+      if (targetJudgeParam) {
+        const jUser = await User.findOne({ email: new RegExp(`^${targetJudgeParam.trim()}$`, 'i') });
+        if (jUser) {
+          filter.judgeId = jUser._id;
+        }
+      }
     }
 
     const scores = await Score.find(filter)
@@ -246,7 +256,14 @@ export async function submitScore(req, res) {
       });
     }
 
-    if (event.status === 'closed') {
+    if (event.status === 'draft') {
+      return res.status(400).json({
+        error: 'BadRequest',
+        message: 'Judging is not permitted on a draft event.'
+      });
+    }
+
+    if (event.status === 'closed' || event.status === 'ended') {
       return res.status(400).json({
         error: 'BadRequest',
         message: 'Judging is closed for this event.'
@@ -365,6 +382,16 @@ export async function updateScore(req, res) {
         error: 'Forbidden',
         message: 'You are not permitted to modify another judge\'s score.'
       });
+    }
+
+    const event = await Event.findById(score.eventId);
+    if (event) {
+      if (event.status === 'closed' || event.status === 'ended') {
+        return res.status(400).json({
+          error: 'BadRequest',
+          message: 'Judging is closed for this event.'
+        });
+      }
     }
 
     if (criteria && typeof criteria === 'object') {
@@ -758,12 +785,23 @@ export async function exportCSV(req, res) {
       });
     }
 
-    const projects = await Project.find({ status: 'submitted' })
+    const eventFilter = user.role === 'admin' ? {} : { createdBy: user._id };
+    const myEvents = await Event.find(eventFilter).select('_id');
+    const myEventIds = myEvents.map(e => e._id);
+
+    const projectFilter = { status: 'submitted' };
+    const scoreFilter = {};
+    if (user.role !== 'admin') {
+      projectFilter.eventId = { $in: myEventIds };
+      scoreFilter.eventId = { $in: myEventIds };
+    }
+
+    const projects = await Project.find(projectFilter)
       .populate('teamId', 'name')
       .populate('trackId', 'name')
       .sort({ createdAt: 1 });
 
-    const scores = await Score.find({});
+    const scores = await Score.find(scoreFilter);
 
     // Build project score lookup
     const scoreMap = new Map();

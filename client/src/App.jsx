@@ -21,10 +21,10 @@ import JudgeDashboard from './views/JudgeDashboard';
 import PlaceholderView from './views/PlaceholderView';
 
 const ROLE_VIEWS = {
-  participant: ['dashboard', 'my-team', 'my-project', 'account'],
-  judge: ['assigned-projects', 'reviews', 'account'],
-  organizer: ['dashboard', 'my-events', 'event-workspace', 'submissions', 'judges', 'judging', 'results', 'account'],
-  admin: ['admin-system', 'developer', 'account']
+  participant: ['dashboard', 'my-team', 'my-project', 'projects', 'account', 'hackathons'],
+  judge: ['assigned-projects', 'reviews', 'judging', 'projects', 'account'],
+  organizer: ['dashboard', 'my-events', 'event-workspace', 'submissions', 'judges', 'judging', 'results', 'projects', 'account'],
+  admin: ['admin-system', 'developer', 'projects', 'account']
 };
 
 function routeFromHash() {
@@ -176,8 +176,8 @@ function AppContent() {
         )}
 
         {/* Judge Views */}
-        {['assigned-projects', 'reviews'].includes(visibleView) && (
-          <JudgeDashboard onOpenAuth={openAuthModal} />
+        {['assigned-projects', 'reviews', 'judging'].includes(visibleView) && (
+          <JudgeDashboard onOpenAuth={openAuth} />
         )}
 
         {/* Organizer Views */}

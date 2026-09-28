@@ -10,6 +10,20 @@ import Score from '../models/score.model.js';
 import AuditLog from '../models/audit.model.js';
 
 /**
+ * Helper to ensure event exists and organizer owns the event (unless admin)
+ */
+async function checkEventOrganizer(eventId, user) {
+  const event = await Event.findById(eventId);
+  if (!event) {
+    return { error: { status: 404, error: 'NotFound', message: 'Event not found.' } };
+  }
+  if (user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== user._id.toString()) {
+    return { error: { status: 403, error: 'Forbidden', message: 'You can only manage judges and results for events you host.' } };
+  }
+  return { event };
+}
+
+/**
  * GET /api/events/:eventId/judges
  * List all judges for an event with assignment details, progress, and status.
  */
@@ -17,9 +31,9 @@ export async function getEventJudges(req, res) {
   const { eventId } = req.params;
 
   try {
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({ error: 'NotFound', message: 'Event not found.' });
+    const { event, error } = await checkEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
     }
 
     // 1. Fetch submitted projects for this event
@@ -128,9 +142,9 @@ export async function assignJudge(req, res) {
   const { judgeId, trackId, projectIds, assignedAll } = req.body;
 
   try {
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({ error: 'NotFound', message: 'Event not found.' });
+    const { event, error } = await checkEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
     }
 
     if (!judgeId || !mongoose.Types.ObjectId.isValid(judgeId)) {
@@ -232,9 +246,9 @@ export async function inviteJudge(req, res) {
       return res.status(400).json({ error: 'BadRequest', message: 'Valid email address is required.' });
     }
 
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({ error: 'NotFound', message: 'Event not found.' });
+    const { event, error } = await checkEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
     }
 
     // Verify track if provided
@@ -331,6 +345,11 @@ export async function revokeAssignment(req, res) {
   const { eventId, judgeId } = req.params;
 
   try {
+    const { event, error } = await checkEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
+    }
+
     const assignment = await Assignment.findOne({ eventId, judgeId, status: 'active' });
     if (!assignment) {
       return res.status(404).json({ error: 'NotFound', message: 'Active assignment not found for this judge in this event.' });
@@ -361,6 +380,11 @@ export async function getAvailableJudges(req, res) {
   const { eventId } = req.params;
 
   try {
+    const { event, error } = await checkEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
+    }
+
     const activeAssignments = await Assignment.find({ eventId, status: 'active' }).select('judgeId').lean();
     const assignedJudgeIds = new Set(activeAssignments.map(a => a.judgeId.toString()));
 
@@ -394,9 +418,9 @@ export async function publishResults(req, res) {
   const { acknowledgeWarnings = false } = req.body;
 
   try {
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({ error: 'NotFound', message: 'Event not found.' });
+    const { event, error } = await checkEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
     }
 
     const projects = await Project.find({ eventId, status: 'submitted' }).select('_id').lean();

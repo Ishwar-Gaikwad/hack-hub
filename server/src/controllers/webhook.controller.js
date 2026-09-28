@@ -5,6 +5,20 @@ import { dispatchWebhook } from '../services/webhook.service.js';
 import AuditLog from '../models/audit.model.js';
 
 /**
+ * Helper to ensure event exists and organizer owns the event (unless admin)
+ */
+async function verifyEventOrganizer(eventId, user) {
+  const event = await Event.findById(eventId);
+  if (!event) {
+    return { error: { status: 404, error: 'EventNotFound', message: 'Event not found' } };
+  }
+  if (user.role === 'organizer' && event.createdBy && event.createdBy.toString() !== user._id.toString()) {
+    return { error: { status: 403, error: 'Forbidden', message: 'You can only manage webhooks for hackathons you host' } };
+  }
+  return { event };
+}
+
+/**
  * Register a new event webhook (Organizer/Admin only)
  * POST /api/events/:eventId/webhooks
  */
@@ -13,12 +27,24 @@ export async function createWebhook(req, res) {
   const { targetUrl, secret, subscribedEvents = ['*'] } = req.body;
 
   try {
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({ error: 'EventNotFound', message: 'Event not found' });
+    const { event, error } = await verifyEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
     }
 
-    if (!targetUrl || typeof targetUrl !== 'string' || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {
+    if (!targetUrl || typeof targetUrl !== 'string') {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'A valid targetUrl starting with http:// or https:// is required'
+      });
+    }
+
+    try {
+      const parsedUrl = new URL(targetUrl);
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        throw new Error('Invalid protocol');
+      }
+    } catch {
       return res.status(400).json({
         error: 'ValidationError',
         message: 'A valid targetUrl starting with http:// or https:// is required'
@@ -79,13 +105,31 @@ export async function updateWebhook(req, res) {
   const { active, targetUrl, subscribedEvents } = req.body;
 
   try {
+    const { error } = await verifyEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
+    }
+
     const webhook = await Webhook.findOne({ _id: webhookId, eventId });
     if (!webhook) {
       return res.status(404).json({ error: 'WebhookNotFound', message: 'Webhook not found' });
     }
 
     if (typeof active === 'boolean') webhook.active = active;
-    if (targetUrl) webhook.targetUrl = targetUrl;
+    if (targetUrl) {
+      try {
+        const parsed = new URL(targetUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          throw new Error('Invalid protocol');
+        }
+        webhook.targetUrl = targetUrl;
+      } catch {
+        return res.status(400).json({
+          error: 'ValidationError',
+          message: 'A valid targetUrl starting with http:// or https:// is required'
+        });
+      }
+    }
     if (Array.isArray(subscribedEvents)) webhook.subscribedEvents = subscribedEvents;
 
     await webhook.save();
@@ -124,6 +168,11 @@ export async function getWebhooks(req, res) {
   const { eventId } = req.params;
 
   try {
+    const { error } = await verifyEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
+    }
+
     const webhooks = await Webhook.find({ eventId }).sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -156,6 +205,11 @@ export async function deleteWebhook(req, res) {
   const { eventId, webhookId } = req.params;
 
   try {
+    const { error } = await verifyEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
+    }
+
     const deleted = await Webhook.findOneAndDelete({ _id: webhookId, eventId });
     if (!deleted) {
       return res.status(404).json({ error: 'WebhookNotFound', message: 'Webhook not found' });
@@ -187,6 +241,11 @@ export async function testWebhook(req, res) {
   const { eventId, webhookId } = req.params;
 
   try {
+    const { error } = await verifyEventOrganizer(eventId, req.user);
+    if (error) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
+    }
+
     const webhook = await Webhook.findOne({ _id: webhookId, eventId });
     if (!webhook) {
       return res.status(404).json({ error: 'WebhookNotFound', message: 'Webhook not found' });

@@ -177,3 +177,86 @@ export async function deleteComment(req, res) {
     return res.status(500).json({ error: 'InternalServerError', message: 'Failed to delete comment' });
   }
 }
+
+/**
+ * Update an existing comment (author only)
+ * PUT /api/comments/:commentId
+ */
+export async function updateComment(req, res) {
+  const { commentId, eventId, projectId } = req.params;
+  const { content } = req.body;
+  const user = req.user;
+  const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '127.0.0.1';
+
+  try {
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      return res.status(404).json({ error: 'CommentNotFound', message: 'Comment not found' });
+    }
+
+    if (eventId && comment.eventId.toString() !== eventId) {
+      return res.status(400).json({ error: 'EventMismatch', message: 'Comment does not belong to this event' });
+    }
+
+    if (projectId && comment.projectId.toString() !== projectId) {
+      return res.status(400).json({ error: 'ProjectMismatch', message: 'Comment does not belong to this project' });
+    }
+
+    const isAuthor = comment.authorId.toString() === user._id.toString();
+    if (!isAuthor && user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You do not have permission to edit another user\'s comment'
+      });
+    }
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'Comment content cannot be empty'
+      });
+    }
+
+    const trimmed = content.trim();
+    if (trimmed.length > 1000) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        message: 'Comment cannot exceed 1000 characters'
+      });
+    }
+
+    comment.content = sanitizeContent(trimmed);
+    await comment.save();
+
+    await AuditLog.create({
+      action: 'comment.updated',
+      actorId: user._id,
+      eventId: comment.eventId,
+      projectId: comment.projectId,
+      metadata: { commentId, length: comment.content.length },
+      ip: String(clientIp)
+    });
+
+    const populated = await Comment.findById(comment._id).populate('authorId', 'email role');
+
+    return res.status(200).json({
+      message: 'Comment updated successfully',
+      comment: {
+        _id: populated._id,
+        projectId: populated.projectId,
+        eventId: populated.eventId,
+        author: {
+          _id: populated.authorId?._id,
+          email: populated.authorId?.email,
+          role: populated.authorId?.role
+        },
+        content: populated.content,
+        createdAt: populated.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('[Comment Controller] Error updating comment:', error);
+    return res.status(500).json({ error: 'InternalServerError', message: 'Failed to update comment' });
+  }
+}
+

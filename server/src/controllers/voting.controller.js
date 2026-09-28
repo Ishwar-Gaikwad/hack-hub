@@ -347,6 +347,16 @@ export async function getResults(req, res) {
     const windowStatus = getVotingWindowStatus(event);
     const isStaff = req.user && ['organizer', 'admin'].includes(req.user.role);
 
+    // If voting has not started yet and requester is NOT staff, keep results sealed
+    if (windowStatus.reason === 'not_started' && !isStaff) {
+      return res.status(200).json({
+        status: 'voting_not_started',
+        message: 'Community voting has not started yet. Results will be published after voting concludes.',
+        votingOpenAt: event.votingOpenAt,
+        resultsHidden: true
+      });
+    }
+
     // If voting is actively open and requester is NOT staff, hide live vote totals & rankings!
     if (windowStatus.isOpen && !isStaff) {
       return res.status(200).json({

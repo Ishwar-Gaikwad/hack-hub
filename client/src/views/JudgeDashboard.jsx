@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import ProjectDetailModal from '../components/ProjectDetailModal';
+import { getFriendlyErrorMessage } from '../utils/formatters';
 import {
   Award,
   CheckCircle2,
@@ -99,7 +100,7 @@ export default function JudgeDashboard({ onOpenAuth }) {
       setStats(data.stats || { totalAssigned: 0, completedCount: 0, remainingCount: 0, progressPercentage: 0 });
       setProjects(data.projects || []);
     } catch (err) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err, 'Could not load assigned projects.'));
     } finally {
       setLoading(false);
     }
@@ -211,12 +212,16 @@ export default function JudgeDashboard({ onOpenAuth }) {
       setActiveProject(null);
       await loadJudgingData();
     } catch (err) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err, 'Could not submit review. Please try again.'));
       setConfirmModalOpen(false);
     } finally {
       setSubmitting(false);
     }
   };
+
+  const nextReviewProject = useMemo(() => {
+    return projects.find(p => !p.isReviewed);
+  }, [projects]);
 
   const currentWeightedTotal = useMemo(() => {
     return computeWeightedScore(formCriteria);
@@ -538,16 +543,24 @@ export default function JudgeDashboard({ onOpenAuth }) {
   // ==========================================
   return (
     <div className="page-view-container judge-dashboard-view">
+      {/* ORIENTATION BLOCK: Answers Where am I? What can I do? What needs attention? What happens next? */}
       <header className="page-header-block">
         <div className="page-title-group">
-          <p className="organizer-eyebrow">Judge Evaluation Portal</p>
-          <h1 className="page-title">My Judging</h1>
+          <p className="organizer-eyebrow">Judge Evaluation Console</p>
+          <h1 className="page-title">Judging</h1>
           <p className="page-description">
-            {event?.name ? `Assigned event: ${event.name}` : 'Evaluate assigned hackathon submissions against the structured rubric.'}
+            {event?.name
+              ? `Assigned event: ${event.name}. Score submissions across technical innovation, execution, design, impact, and documentation.`
+              : 'Evaluate assigned hackathon submissions against the standardized 5-criterion rubric.'}
           </p>
         </div>
-        <div className="badge-tag" style={{ color: '#4D2FF9', borderColor: 'rgba(77, 47, 249, 0.3)', background: 'rgba(77, 47, 249, 0.08)' }}>
-          Judge: {currentUser.email}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+          <div className="badge-tag" style={{ color: '#4D2FF9', borderColor: 'rgba(77, 47, 249, 0.3)', background: 'rgba(77, 47, 249, 0.08)' }}>
+            Judge: {currentUser.email}
+          </div>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Peer scores remain isolated and confidential
+          </span>
         </div>
       </header>
 
@@ -563,10 +576,82 @@ export default function JudgeDashboard({ onOpenAuth }) {
         </div>
       )}
 
+      {/* 1-CLICK NEXT REVIEW ACTION: Immediate access for first-time or returning judge */}
+      {nextReviewProject && (
+        <section
+          className="workspace-card"
+          style={{
+            background: 'linear-gradient(135deg, rgba(77, 47, 249, 0.08), rgba(86, 103, 255, 0.12))',
+            border: '1px solid rgba(77, 47, 249, 0.35)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.25rem 1.5rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ flex: '1 1 300px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+              <span className="badge-tag" style={{ background: '#4D2FF9', color: '#ffffff', border: 'none', fontSize: '0.74rem', fontWeight: 600 }}>
+                Next Up for Evaluation
+              </span>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                {stats.remainingCount} review{stats.remainingCount === 1 ? '' : 's'} remaining
+              </span>
+            </div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.2rem 0', color: 'var(--text-primary)' }}>
+              {nextReviewProject.title}
+            </h2>
+            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: 0 }}>
+              Track: <strong>{nextReviewProject.track?.name || 'General'}</strong> &bull; Team: <strong>{nextReviewProject.team?.name || 'Independent'}</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => openReviewScreen(nextReviewProject)}
+            style={{ padding: '0.75rem 1.5rem', fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <span>Review Next Project</span>
+            <ChevronRight size={18} />
+          </button>
+        </section>
+      )}
+
+      {/* ALL REVIEWS COMPLETED NOTICE */}
+      {!nextReviewProject && projects.length > 0 && (
+        <section
+          className="workspace-card"
+          style={{
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.15rem 1.35rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem'
+          }}
+        >
+          <CheckCircle2 size={28} color="#10b981" style={{ flexShrink: 0 }} />
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 650, color: '#065f46' }}>
+              All Assigned Evaluations Complete!
+            </h3>
+            <p style={{ margin: '0.2rem 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+              You have evaluated all {projects.length} assigned projects. You can adjust your scores below at any time before judging closes.
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* MY JUDGING OVERVIEW HERO CARD (Section 2) */}
       <section className="workspace-card" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
         <h2 style={{ fontSize: '1.1rem', fontWeight: 650, marginBottom: '1rem', color: 'var(--text-primary)' }}>
-          My Judging Progress
+          Evaluation Progress
         </h2>
 
         {/* 4 Stats Grid */}
@@ -658,10 +743,24 @@ export default function JudgeDashboard({ onOpenAuth }) {
       ) : filteredProjects.length === 0 ? (
         <div className="workspace-card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
           <Award size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.5 }} />
-          <h3>No projects match your filter</h3>
-          <p style={{ fontSize: '0.85rem', marginTop: '0.3rem' }}>
-            {projects.length === 0 ? 'No submitted projects are available for evaluation.' : 'Try changing your search or status filter.'}
+          <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+            {projects.length === 0 ? 'No projects submitted yet' : 'No projects match your filter'}
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto' }}>
+            {projects.length === 0
+              ? 'Projects will appear here after participants submit their projects and the organizer assigns tracks to you.'
+              : 'Try changing your search keywords or switching between All, Pending, and Completed filters.'}
           </p>
+          {filteredProjects.length === 0 && projects.length > 0 && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() => { setSearch(''); setStatusFilter('all'); }}
+              style={{ marginTop: '1rem' }}
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '0.85rem' }}>

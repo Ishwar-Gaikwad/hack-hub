@@ -30,7 +30,8 @@ import {
 } from '../controllers/voting.controller.js';
 import {
   getComments,
-  createComment
+  createComment,
+  updateComment
 } from '../controllers/comment.controller.js';
 import {
   getAuditLogs,
@@ -110,6 +111,7 @@ router.get('/:eventId/results', optionalAuthenticate, getResults);
 // Project Comments endpoints (T3)
 router.get('/:eventId/projects/:projectId/comments', optionalAuthenticate, getComments);
 router.post('/:eventId/projects/:projectId/comments', authenticate, commentRateLimiter, createComment);
+router.put('/:eventId/projects/:projectId/comments/:commentId', authenticate, updateComment);
 
 // Audit & Abuse Protection Metrics (T3 - Staff only)
 router.get('/:eventId/audit-logs', ...requireStaff, getAuditLogs);

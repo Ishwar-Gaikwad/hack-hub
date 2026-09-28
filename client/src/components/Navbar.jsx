@@ -18,34 +18,32 @@ export default function Navbar({ activeView, setActiveView, onOpenAuth }) {
     switch (currentUser.role) {
       case 'participant':
         return [
-          { id: 'home', label: 'Home' },
-          { id: 'hackathons', label: 'Hackathons' },
+          { id: 'dashboard', label: 'Dashboard' },
           { id: 'projects', label: 'Projects' },
-          { id: 'dashboard', label: 'My Hackathons' },
-          { id: 'account', label: 'Account' }
+          { id: 'account', label: 'Settings' }
         ];
       case 'judge':
         return [
-          { id: 'assigned-projects', label: 'Assigned Projects' },
-          { id: 'reviews', label: 'Reviews' },
-          { id: 'account', label: 'Account' }
+          { id: 'assigned-projects', label: 'Judging' },
+          { id: 'projects', label: 'Projects' },
+          { id: 'account', label: 'Settings' }
         ];
       case 'organizer':
         return [
           { id: 'dashboard', label: 'Dashboard' },
-          { id: 'my-events', label: 'My Hackathons' },
-          { id: 'account', label: 'Account' }
+          { id: 'projects', label: 'Projects' },
+          { id: 'results', label: 'Results' },
+          { id: 'account', label: 'Settings' }
         ];
       case 'admin':
         return [
-          { id: 'admin-system', label: 'Admin/System' },
-          { id: 'developer', label: 'Developer' },
-          { id: 'account', label: 'Account' }
+          { id: 'admin-system', label: 'Dashboard' },
+          { id: 'projects', label: 'Projects' },
+          { id: 'account', label: 'Settings' }
         ];
       default:
         return [
           { id: 'home', label: 'Home' },
-          { id: 'hackathons', label: 'Hackathons' },
           { id: 'projects', label: 'Projects' }
         ];
     }

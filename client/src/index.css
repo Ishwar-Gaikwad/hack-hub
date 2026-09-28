@@ -3311,4 +3311,69 @@ a:focus-visible { outline-color: #4D2FF9; border-color: #4D2FF9; }
   margin: 0.75rem 0;
 }
 
+/* Accessibility: High-Visibility Keyboard Focus States */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #4D2FF9 !important;
+  outline-offset: 2px !important;
+}
+
+/* Responsive Overrides & Tablet/Mobile Usability */
+@media (max-width: 768px) {
+  .main-content-container {
+    padding: 1.5rem 1rem 4rem !important;
+  }
+
+  .organizer-landing-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 1rem !important;
+  }
+
+  .hosted-event-meta {
+    grid-template-columns: 1fr !important;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .organizer-workspace-tabs {
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    padding-bottom: 0.5rem !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .organizer-subnav-bar {
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+  }
+
+  .organizer-table {
+    overflow-x: auto !important;
+    min-width: 100%;
+  }
+
+  .export-card-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .lifecycle-stage-container {
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
 
