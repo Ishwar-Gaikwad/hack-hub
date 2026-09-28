@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import AuthModal from './components/AuthModal';
+import RibbonFieldBackground from './components/RibbonFieldBackground';
 
 // Views
 import HomeView from './views/HomeView';
@@ -133,7 +134,8 @@ function AppContent() {
   }
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${visibleView === 'home' && !currentUser ? 'public-home-layout' : ''}`}>
+      <RibbonFieldBackground />
       {/* Top Role-Specific Navbar */}
       <Navbar
         activeView={visibleView}
