@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import ProjectDetailModal from '../components/ProjectDetailModal';
+import CertificateModal from '../components/CertificateModal';
 import {
   ArrowLeft,
   CalendarDays,
@@ -19,7 +20,15 @@ import {
   Check,
   X,
   Award,
-  FileText
+  FileText,
+  Copy,
+  FileCode,
+  UploadCloud,
+  Globe,
+  RefreshCw,
+  Play,
+  Code,
+  Share2
 } from 'lucide-react';
 
 const TABS = [
@@ -28,8 +37,20 @@ const TABS = [
   { id: 'judges', label: 'Judges' },
   { id: 'judging', label: 'Judging' },
   { id: 'results', label: 'Results' },
+  { id: 'data', label: 'Data' },
+  { id: 'integrations', label: 'Integrations' },
   { id: 'audit', label: 'Audit' },
   { id: 'settings', label: 'Settings' }
+];
+
+const WEBHOOK_EVENTS_LIST = [
+  { id: 'submission.created', label: 'Submission created' },
+  { id: 'submission.updated', label: 'Submission updated' },
+  { id: 'judge.assigned', label: 'Judge assigned' },
+  { id: 'judging.completed', label: 'Review completed' },
+  { id: 'voting.started', label: 'Voting started' },
+  { id: 'voting.closed', label: 'Voting closed' },
+  { id: 'results.published', label: 'Results published' }
 ];
 
 const LIFECYCLE_STAGES = ['draft', 'published', 'active', 'judging', 'voting', 'ended', 'closed'];
@@ -136,6 +157,49 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(false);
 
+  // Grouped sub-navigation states
+  const [resultsSubTab, setResultsSubTab] = useState('results'); // 'results' | 'certificates' | 'verification'
+  const [dataSubTab, setDataSubTab] = useState('import'); // 'import' | 'export'
+  const [integrationsSubTab, setIntegrationsSubTab] = useState('webhooks'); // 'webhooks' | 'api' | 'embed'
+
+  // Certificates state
+  const [eventCertificates, setEventCertificates] = useState([]);
+  const [certificatesLoading, setCertificatesLoading] = useState(false);
+  const [certificateFilter, setCertificateFilter] = useState('');
+  const [selectedCert, setSelectedCert] = useState(null);
+  const [certModalOpen, setCertModalOpen] = useState(false);
+
+  // Verifiable judging records state
+  const [judgingRecord, setJudgingRecord] = useState(null);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationResult, setVerificationResult] = useState(null);
+  const [verifyInProgress, setVerifyInProgress] = useState(false);
+
+  // Bulk import & export state
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importParsedData, setImportParsedData] = useState(null);
+  const [importValidation, setImportValidation] = useState(null);
+  const [importValidating, setImportValidating] = useState(false);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+
+  // Webhooks state
+  const [webhooks, setWebhooks] = useState([]);
+  const [webhooksLoading, setWebhooksLoading] = useState(false);
+  const [webhookModalOpen, setWebhookModalOpen] = useState(false);
+  const [webhookForm, setWebhookForm] = useState({
+    targetUrl: '',
+    secret: '',
+    subscribedEvents: ['submission.created', 'judging.completed', 'results.published']
+  });
+  const [createdWebhookSecret, setCreatedWebhookSecret] = useState(null);
+  const [deliveriesModalWebhook, setDeliveriesModalWebhook] = useState(null);
+  const [testingWebhookId, setTestingWebhookId] = useState(null);
+  const [testWebhookResult, setTestWebhookResult] = useState(null);
+
+  // Embed gallery state
+  const [copiedEmbed, setCopiedEmbed] = useState(false);
+
   const headers = useMemo(() => ({ Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' }), [sessionToken]);
   const navigateTab = (nextTab) => {
     setTab(nextTab);
@@ -171,6 +235,13 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
     setAssignedJudges([]);
     setAvailableJudges([]);
     setAuditLogs([]);
+    setEventCertificates([]);
+    setJudgingRecord(null);
+    setVerificationResult(null);
+    setWebhooks([]);
+    setCreatedWebhookSecret(null);
+    setImportValidation(null);
+    setImportParsedData(null);
     setError('');
   }, [eventId]);
 
@@ -290,6 +361,258 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
     finally { setAuditLoading(false); }
   }, [eventId, auditFilter, headers, sessionToken]);
 
+  const loadEventCertificates = useCallback(async () => {
+    if (!eventId) return;
+    setCertificatesLoading(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/certificates`, { headers });
+      const data = await res.json();
+      if (res.ok) setEventCertificates(data.certificates || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCertificatesLoading(false);
+    }
+  }, [eventId, headers]);
+
+  const loadJudgingRecord = useCallback(async () => {
+    if (!eventId) return;
+    setVerificationLoading(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/records/judging`, { headers });
+      const data = await res.json();
+      if (res.ok) setJudgingRecord(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setVerificationLoading(false);
+    }
+  }, [eventId, headers]);
+
+  const handleVerifyRecord = async () => {
+    if (!eventId || !judgingRecord) return;
+    setVerifyInProgress(true);
+    setVerificationResult(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/records/verify`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          manifest: judgingRecord.verifiableRecord,
+          signature: judgingRecord.signature
+        })
+      });
+      const data = await res.json();
+      setVerificationResult({
+        verified: data.verified,
+        message: data.message || (data.verified ? 'Record signature verified successfully.' : 'Verification failed.')
+      });
+    } catch (err) {
+      setVerificationResult({ verified: false, message: 'Verification request failed: ' + err.message });
+    } finally {
+      setVerifyInProgress(false);
+    }
+  };
+
+  const handleDownloadRecord = () => {
+    if (!judgingRecord) return;
+    const blob = new Blob([JSON.stringify(judgingRecord, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `judging-record-${eventId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const loadWebhooks = useCallback(async () => {
+    if (!eventId || !sessionToken) return;
+    setWebhooksLoading(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/webhooks`, { headers });
+      const data = await res.json();
+      if (res.ok) setWebhooks(data.webhooks || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setWebhooksLoading(false);
+    }
+  }, [eventId, headers, sessionToken]);
+
+  const handleCreateWebhook = async (e) => {
+    e.preventDefault();
+    if (!eventId) return;
+    setError('');
+    try {
+      const res = await fetch(`/api/events/${eventId}/webhooks`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(webhookForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Could not register webhook.');
+      setCreatedWebhookSecret(data.webhook?.secret || null);
+      setNotice('Webhook registered successfully.');
+      setWebhookForm({
+        targetUrl: '',
+        secret: '',
+        subscribedEvents: ['submission.created', 'judging.completed', 'results.published']
+      });
+      loadWebhooks();
+      loadAuditLogs();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleToggleWebhook = async (webhook) => {
+    if (!eventId) return;
+    try {
+      const res = await fetch(`/api/events/${eventId}/webhooks/${webhook._id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ active: !webhook.active })
+      });
+      if (res.ok) {
+        setNotice(`Webhook ${webhook.active ? 'disabled' : 'enabled'}.`);
+        loadWebhooks();
+        loadAuditLogs();
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteWebhook = async (webhookId) => {
+    if (!eventId || !window.confirm('Delete this webhook endpoint?')) return;
+    try {
+      const res = await fetch(`/api/events/${eventId}/webhooks/${webhookId}`, {
+        method: 'DELETE',
+        headers
+      });
+      if (res.ok) {
+        setNotice('Webhook deleted.');
+        loadWebhooks();
+        loadAuditLogs();
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleTestWebhook = async (webhookId) => {
+    if (!eventId) return;
+    setTestingWebhookId(webhookId);
+    setTestWebhookResult(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/webhooks/${webhookId}/test`, {
+        method: 'POST',
+        headers
+      });
+      const data = await res.json();
+      setTestWebhookResult({ webhookId, ...data });
+      loadWebhooks();
+    } catch (err) {
+      setTestWebhookResult({ webhookId, error: err.message });
+    } finally {
+      setTestingWebhookId(null);
+    }
+  };
+
+  const handleFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFile(file);
+    setImportValidation(null);
+    setImportValidating(true);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result;
+        const parsed = JSON.parse(text);
+        setImportParsedData(parsed);
+
+        // Pre-validate with server dry-run
+        const res = await fetch(`/api/events/${eventId}/import`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            teams: parsed.teams || [],
+            projects: parsed.projects || [],
+            validateOnly: true
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setImportValidation({
+            valid: true,
+            teamsCount: data.importedTeamsCount ?? (parsed.teams?.length || 0),
+            projectsCount: data.importedProjectsCount ?? (parsed.projects?.length || 0),
+            errors: []
+          });
+        } else {
+          setImportValidation({
+            valid: false,
+            teamsCount: parsed.teams?.length || 0,
+            projectsCount: parsed.projects?.length || 0,
+            errors: data.errors || [data.message || 'Validation failed']
+          });
+        }
+      } catch (err) {
+        setImportValidation({
+          valid: false,
+          teamsCount: 0,
+          projectsCount: 0,
+          errors: ['Invalid JSON format: ' + err.message]
+        });
+      } finally {
+        setImportValidating(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExecuteImport = async () => {
+    if (!eventId || !importParsedData) return;
+    setImportSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/events/${eventId}/import`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          teams: importParsedData.teams || [],
+          projects: importParsedData.projects || []
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Bulk import failed.');
+      }
+      setNotice(`Import completed: ${data.importedProjectsCount} projects and ${data.importedTeamsCount} teams created.`);
+      setImportModalOpen(false);
+      setImportFile(null);
+      setImportParsedData(null);
+      setImportValidation(null);
+      loadSubmissions();
+      loadEvent();
+      loadAuditLogs();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImportSubmitting(false);
+    }
+  };
+
+  const handleCopyEmbed = () => {
+    const embedCode = `<iframe src="${window.location.origin}/embed/gallery/${eventId}" width="100%" height="600" frameborder="0" allowtransparency="true"></iframe>`;
+    navigator.clipboard.writeText(embedCode);
+    setCopiedEmbed(true);
+    setTimeout(() => setCopiedEmbed(false), 2500);
+  };
+
   useEffect(() => {
     if (!eventId) return;
     loadMetricsAndScores().catch((err) => setError(err.message));
@@ -298,8 +621,12 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
     if (tab.toLowerCase() === 'submissions') loadSubmissions().catch((err) => setError(err.message));
   }, [tab, loadSubmissions]);
   useEffect(() => {
-    if (tab.toLowerCase() === 'results') loadResults().catch((err) => setError(err.message));
-  }, [tab, loadResults]);
+    if (tab.toLowerCase() === 'results') {
+      if (resultsSubTab === 'results') loadResults().catch((err) => setError(err.message));
+      if (resultsSubTab === 'certificates') loadEventCertificates().catch((err) => setError(err.message));
+      if (resultsSubTab === 'verification') loadJudgingRecord().catch((err) => setError(err.message));
+    }
+  }, [tab, resultsSubTab, loadResults, loadEventCertificates, loadJudgingRecord]);
   useEffect(() => {
     if (tab.toLowerCase() === 'judging') loadJudgingOverview().catch((err) => setError(err.message));
   }, [tab, loadJudgingOverview]);
@@ -314,6 +641,16 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
       loadAuditLogs().catch((err) => setError(err.message));
     }
   }, [tab, loadAuditLogs]);
+  useEffect(() => {
+    if (tab.toLowerCase() === 'integrations') {
+      if (integrationsSubTab === 'webhooks') loadWebhooks().catch((err) => setError(err.message));
+    }
+  }, [tab, integrationsSubTab, loadWebhooks]);
+  useEffect(() => {
+    if (tab.toLowerCase() === 'data') {
+      loadSubmissions().catch(() => {});
+    }
+  }, [tab, loadSubmissions]);
   useEffect(() => {
     if (tab.toLowerCase() === 'overview') {
       loadEventJudges().catch(() => {});
@@ -1155,61 +1492,631 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
     )}
 
     {/* ========================================================
-        Tab: Results (Workflow & Publishing)
+        Tab: Results (Workflow, Certificates & Verification)
         ======================================================== */}
     {tab.toLowerCase() === 'results' && <section className="workspace-card organizer-info-panel">
-      {/* 5-Step Results Workflow Pipeline */}
-      <div className="results-pipeline-bar">
-        <div className="pipeline-step completed">
-          <CheckCircle size={14} /> 1. Judging Complete
-        </div>
-        <ChevronRight size={14} className="text-muted" />
-        <div className="pipeline-step completed">
-          <CheckCircle size={14} /> 2. Review Scores
-        </div>
-        <ChevronRight size={14} className="text-muted" />
-        <div className="pipeline-step completed">
-          <CheckCircle size={14} /> 3. Resolve Discrepancies
-        </div>
-        <ChevronRight size={14} className="text-muted" />
-        <div className="pipeline-step active">
-          <ChevronRight size={14} /> 4. Calculate Final Results
-        </div>
-        <ChevronRight size={14} className="text-muted" />
-        <div className={`pipeline-step ${event.resultsPublished ? 'completed' : ''}`}>
-          {event.resultsPublished ? <CheckCircle size={14} /> : <Award size={14} />} 5. Publish Results
-        </div>
+      {/* Grouped Secondary Navigation */}
+      <div className="organizer-subnav-bar">
+        <button
+          type="button"
+          className={`subnav-pill ${resultsSubTab === 'results' ? 'active' : ''}`}
+          onClick={() => setResultsSubTab('results')}
+        >
+          Results Standings
+        </button>
+        <button
+          type="button"
+          className={`subnav-pill ${resultsSubTab === 'certificates' ? 'active' : ''}`}
+          onClick={() => { setResultsSubTab('certificates'); loadEventCertificates(); }}
+        >
+          Certificates
+        </button>
+        <button
+          type="button"
+          className={`subnav-pill ${resultsSubTab === 'verification' ? 'active' : ''}`}
+          onClick={() => { setResultsSubTab('verification'); loadJudgingRecord(); }}
+        >
+          Verification
+        </button>
       </div>
 
-      <div className="organizer-section-heading">
-        <div>
-          <h2>Hackathon Results & Publishing</h2>
-          <p>Inspect finalized scores, acknowledge evaluation warnings, and publish winner standings.</p>
-        </div>
-        {!event.resultsPublished ? (
-          <button className="btn-primary btn-sm" onClick={() => setPublishModalOpen(true)}>
-            <Award size={14} /> Publish Final Results
-          </button>
-        ) : (
-          <div className="judging-badge badge-success">
-            <CheckCircle size={13} style={{ marginRight: '4px' }} /> Results Published
+      {resultsSubTab === 'results' && (
+        <>
+          {/* 5-Step Results Workflow Pipeline */}
+          <div className="results-pipeline-bar">
+            <div className="pipeline-step completed">
+              <CheckCircle size={14} /> 1. Judging Complete
+            </div>
+            <ChevronRight size={14} className="text-muted" />
+            <div className="pipeline-step completed">
+              <CheckCircle size={14} /> 2. Review Scores
+            </div>
+            <ChevronRight size={14} className="text-muted" />
+            <div className="pipeline-step completed">
+              <CheckCircle size={14} /> 3. Resolve Discrepancies
+            </div>
+            <ChevronRight size={14} className="text-muted" />
+            <div className="pipeline-step active">
+              <ChevronRight size={14} /> 4. Calculate Final Results
+            </div>
+            <ChevronRight size={14} className="text-muted" />
+            <div className={`pipeline-step ${event.resultsPublished ? 'completed' : ''}`}>
+              {event.resultsPublished ? <CheckCircle size={14} /> : <Award size={14} />} 5. Publish Results
+            </div>
           </div>
-        )}
+
+          <div className="organizer-section-heading">
+            <div>
+              <h2>Hackathon Results & Publishing</h2>
+              <p>Inspect finalized scores, acknowledge evaluation warnings, and publish winner standings.</p>
+            </div>
+            {!event.resultsPublished ? (
+              <button className="btn-primary btn-sm" onClick={() => setPublishModalOpen(true)}>
+                <Award size={14} /> Publish Final Results
+              </button>
+            ) : (
+              <div className="judging-badge badge-success">
+                <CheckCircle size={13} style={{ marginRight: '4px' }} /> Results Published
+              </div>
+            )}
+          </div>
+
+          {event.resultsPublished && (
+            <div className="judging-healthy-banner" style={{ marginBottom: '1.25rem' }}>
+              <CheckCircle size={18} />
+              <span>
+                Final winner results have been published and are live for participants. (Published {dateTime(event.resultsPublishedAt)})
+              </span>
+            </div>
+          )}
+
+          {/* Community vote rankings */}
+          <h3 style={{ fontSize: '0.98rem', fontWeight: 700, margin: '1rem 0 0.5rem' }}>Community Vote Standings</h3>
+          {resultsLoading ? <p>Loading community results…</p> : results?.resultsHidden ? <p>{results.message || 'Results are hidden while voting is open.'}</p> : results?.results?.length ? <div className="organizer-table"><div className="organizer-table-head"><span>Rank / Project</span><span>Team · Track</span><span>Votes</span></div>{results.results.map((item) => <div className="organizer-table-row" key={idOf(item.projectId)}><span>#{item.rank} · {item.title}</span><span>{item.teamName} · {item.trackName}</span><span>{item.votes}</span></div>)}</div> : <p>{voting?.isOpen ? 'Voting is open; no results are available yet.' : 'No community vote results are available.'}</p>}
+          {voting && <p className="organizer-capability-note">{voting.isOpen ? 'Voting is open; the backend allows organizers to view live community rankings.' : 'Voting is closed.'}{voting.votingCloseAt ? ` · closes ${dateTime(voting.votingCloseAt)}` : ''}</p>}
+        </>
+      )}
+
+      {resultsSubTab === 'certificates' && (
+        <>
+          <div className="organizer-section-heading">
+            <div>
+              <h2>Verifiable Certificates</h2>
+              <p>Issue, inspect, and download cryptographic certificates of participation, winner awards, and judging excellence.</p>
+            </div>
+            <select
+              className="form-input form-select"
+              style={{ maxWidth: '200px' }}
+              value={certificateFilter}
+              onChange={(e) => setCertificateFilter(e.target.value)}
+            >
+              <option value="">All Certificates</option>
+              <option value="participation">Participation</option>
+              <option value="winner">Winner Awards</option>
+              <option value="judge">Judging Excellence</option>
+            </select>
+          </div>
+
+          {certificatesLoading ? (
+            <div className="empty-loading-state">Loading certificates…</div>
+          ) : eventCertificates.length ? (
+            <div className="organizer-table">
+              <div className="organizer-table-head" style={{ gridTemplateColumns: '1.8fr 1.5fr 1.8fr 1.5fr' }}>
+                <span>Recipient</span>
+                <span>Certificate Type</span>
+                <span>Project / Role</span>
+                <span>Actions</span>
+              </div>
+              {eventCertificates
+                .filter(c => !certificateFilter || c.type === certificateFilter)
+                .map((cert, idx) => (
+                  <div className="organizer-table-row" style={{ gridTemplateColumns: '1.8fr 1.5fr 1.8fr 1.5fr' }} key={idx}>
+                    <span>
+                      <strong>{cert.recipientEmail}</strong>
+                    </span>
+                    <span>
+                      <span className={`judging-badge ${cert.type === 'winner' ? 'badge-success' : cert.type === 'judge' ? 'badge-warning' : 'badge-neutral'}`}>
+                        {cert.award || cert.type}
+                      </span>
+                    </span>
+                    <span>{cert.projectTitle || cert.teamName || 'Evaluator'}</span>
+                    <span style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => {
+                          setSelectedCert(cert);
+                          setCertModalOpen(true);
+                        }}
+                      >
+                        <Award size={12} /> View
+                      </button>
+                      <a
+                        className="btn-secondary btn-sm"
+                        href={`/api/events/${eventId}/certificates/${cert.type}/${cert.recipientId}?format=html`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Download size={12} /> Download
+                      </a>
+                    </span>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <p className="organizer-empty-inline">No eligible certificates generated yet. Certificates are available for submitted projects and judges.</p>
+          )}
+        </>
+      )}
+
+      {resultsSubTab === 'verification' && (
+        <>
+          <div className="organizer-section-heading">
+            <div>
+              <h2>Verifiable Judging Records</h2>
+              <p>Cryptographically signed manifest verifying evaluation authenticity and integrity using HMAC-SHA256.</p>
+            </div>
+            <div className="organizer-inline-actions">
+              <button
+                className="btn-secondary btn-sm"
+                onClick={handleDownloadRecord}
+                disabled={!judgingRecord}
+              >
+                <Download size={14} /> Download Record JSON
+              </button>
+              <button
+                className="btn-primary btn-sm"
+                onClick={handleVerifyRecord}
+                disabled={!judgingRecord || verifyInProgress}
+              >
+                <ShieldCheck size={14} /> {verifyInProgress ? 'Verifying…' : 'Verify Record'}
+              </button>
+            </div>
+          </div>
+
+          {verificationResult && (
+            <div className={`verification-summary-banner ${verificationResult.verified ? 'valid' : 'invalid'}`}>
+              {verificationResult.verified ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+              <span>{verificationResult.verified ? '✓ Record is valid' : '✕ Record could not be verified'} — {verificationResult.message}</span>
+            </div>
+          )}
+
+          <div className="verification-desc-box">
+            <h4>What does verification mean?</h4>
+            <p>
+              HackHub cryptographically signs the complete judging ledger using HMAC-SHA256. Anyone with this manifest can mathematically verify that no project scores, reviewer comments, or final rankings were altered after judging concluded. Judge identities are protected using cryptographically salted pseudonyms.
+            </p>
+          </div>
+
+          {verificationLoading ? (
+            <div className="empty-loading-state">Loading verification records…</div>
+          ) : judgingRecord ? (
+            <div>
+              <dl className="workspace-event-dates" style={{ marginBottom: '1.25rem' }}>
+                <dt>Judging Record</dt>
+                <dd><code>{judgingRecord.verifiableRecord?.recordType || 'OFFICIAL_JUDGING_RECORD'}</code></dd>
+                <dt>Generated</dt>
+                <dd>{dateTime(judgingRecord.verifiableRecord?.publishedAt)}</dd>
+                <dt>Integrity status</dt>
+                <dd>
+                  <span className="judging-badge badge-success">
+                    Signed ({judgingRecord.verificationAlgorithm || 'HMAC-SHA256'})
+                  </span>
+                </dd>
+                <dt>Evaluated projects</dt>
+                <dd>{judgingRecord.verifiableRecord?.evaluatedProjectsCount || 0}</dd>
+                <dt>Total evaluations</dt>
+                <dd>{judgingRecord.verifiableRecord?.totalEvaluations || 0}</dd>
+                <dt>Cryptographic signature</dt>
+                <dd><code style={{ fontSize: '0.74rem', wordBreak: 'break-all' }}>{judgingRecord.signature}</code></dd>
+              </dl>
+
+              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, margin: '1rem 0 0.5rem' }}>Anonymized Evaluation Ledger</h3>
+              <div className="organizer-table">
+                <div className="organizer-table-head" style={{ gridTemplateColumns: '60px 1.8fr 1fr 2.5fr' }}>
+                  <span>Rank</span>
+                  <span>Project Title</span>
+                  <span>Average Score</span>
+                  <span>Evaluator Pseudonyms (Anonymized)</span>
+                </div>
+                {(judgingRecord.verifiableRecord?.results || []).map((res) => (
+                  <div className="organizer-table-row" style={{ gridTemplateColumns: '60px 1.8fr 1fr 2.5fr' }} key={res.projectId}>
+                    <span><strong>#{res.rank}</strong></span>
+                    <span><strong>{res.title}</strong></span>
+                    <span>{res.averageScore.toFixed(2)} / 100</span>
+                    <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {res.evaluations?.map((ev, i) => (
+                        <span className="judging-badge badge-neutral" key={i} title={`Score: ${ev.normalizedScore}`}>
+                          {ev.judgePseudonym} ({ev.normalizedScore.toFixed(1)})
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="organizer-empty-inline">No judging records generated yet. Evaluate submissions to establish a verifiable record.</p>
+          )}
+        </>
+      )}
+    </section>}
+
+    {/* ========================================================
+        Tab: Data (Bulk Import & Export)
+        ======================================================== */}
+    {tab.toLowerCase() === 'data' && <section className="workspace-card organizer-info-panel">
+      <div className="organizer-subnav-bar">
+        <button
+          type="button"
+          className={`subnav-pill ${dataSubTab === 'import' ? 'active' : ''}`}
+          onClick={() => setDataSubTab('import')}
+        >
+          Import Data
+        </button>
+        <button
+          type="button"
+          className={`subnav-pill ${dataSubTab === 'export' ? 'active' : ''}`}
+          onClick={() => setDataSubTab('export')}
+        >
+          Export Event
+        </button>
       </div>
 
-      {event.resultsPublished && (
-        <div className="judging-healthy-banner" style={{ marginBottom: '1.25rem' }}>
-          <CheckCircle size={18} />
-          <span>
-            Final winner results have been published and are live for participants. (Published {dateTime(event.resultsPublishedAt)})
-          </span>
+      {dataSubTab === 'import' && (
+        <div>
+          <div className="organizer-section-heading">
+            <div>
+              <h2>Bulk Data Import</h2>
+              <p>Transactionally import teams and project submissions with automated pre-validation.</p>
+            </div>
+            <button className="btn-primary btn-sm" onClick={() => setImportModalOpen(true)}>
+              <UploadCloud size={14} /> Import Data
+            </button>
+          </div>
+
+          <div className="verification-desc-box">
+            <h4>Transactional Integrity Guarantee</h4>
+            <p>
+              HackHub executes bulk imports atomically. Before any records are written to the database, the server runs strict pre-validation on all team names, project titles, and schema constraints. If even a single item fails, the entire transaction is rejected and the database is left untouched.
+            </p>
+          </div>
+
+          <div style={{ background: 'rgba(255, 255, 255, 0.65)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '1.25rem' }}>
+            <h3 style={{ fontSize: '0.92rem', marginBottom: '0.5rem' }}>Expected JSON Import Format</h3>
+            <pre style={{ background: 'rgba(15, 23, 42, 0.9)', color: '#e2e8f0', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', overflowX: 'auto' }}>
+{`{
+  "teams": [
+    { "name": "Quantum Leap Labs" },
+    { "name": "CyberShield Collective" }
+  ],
+  "projects": [
+    {
+      "title": "Quantum Qubit Simulator",
+      "teamName": "Quantum Leap Labs",
+      "description": "Simulation platform for quantum circuits",
+      "repositoryUrl": "https://github.com/team/qubit-sim",
+      "status": "submitted"
+    }
+  ]
+}`}
+            </pre>
+          </div>
         </div>
       )}
 
-      {/* Community vote rankings */}
-      <h3 style={{ fontSize: '0.98rem', fontWeight: 700, margin: '1rem 0 0.5rem' }}>Community Vote Standings</h3>
-      {resultsLoading ? <p>Loading community results…</p> : results?.resultsHidden ? <p>{results.message || 'Results are hidden while voting is open.'}</p> : results?.results?.length ? <div className="organizer-table"><div className="organizer-table-head"><span>Rank / Project</span><span>Team · Track</span><span>Votes</span></div>{results.results.map((item) => <div className="organizer-table-row" key={idOf(item.projectId)}><span>#{item.rank} · {item.title}</span><span>{item.teamName} · {item.trackName}</span><span>{item.votes}</span></div>)}</div> : <p>{voting?.isOpen ? 'Voting is open; no results are available yet.' : 'No community vote results are available.'}</p>}
-      {voting && <p className="organizer-capability-note">{voting.isOpen ? 'Voting is open; the backend allows organizers to view live community rankings.' : 'Voting is closed.'}{voting.votingCloseAt ? ` · closes ${dateTime(voting.votingCloseAt)}` : ''}</p>}
+      {dataSubTab === 'export' && (
+        <div>
+          <div className="organizer-section-heading">
+            <div>
+              <h2>Event Export Archive</h2>
+              <p>Download complete event JSON archives and structured CSV files for analysis.</p>
+            </div>
+          </div>
+
+          <div className="export-card-grid">
+            <div className="export-card">
+              <div>
+                <h3>Full Event Archive (JSON)</h3>
+                <p>Complete JSON snapshot including hackathon metadata, tracks, prizes, teams, submissions, and aggregate statistics.</p>
+              </div>
+              <button
+                className="btn-primary btn-sm"
+                onClick={() => {
+                  window.open(`/api/events/${eventId}/export/full`, '_blank');
+                }}
+              >
+                <Download size={14} /> Export Event JSON
+              </button>
+            </div>
+
+            <div className="export-card">
+              <div>
+                <h3>Project Submissions (CSV)</h3>
+                <p>Comma-separated list of all project submissions, tracks, assigned teams, repository URLs, and submission statuses.</p>
+              </div>
+              <button className="btn-secondary btn-sm" onClick={() => downloadCsv('projects')}>
+                <Download size={14} /> Export Projects CSV
+              </button>
+            </div>
+
+            <div className="export-card">
+              <div>
+                <h3>Evaluation Results (CSV)</h3>
+                <p>Complete judging records including individual criteria scores, judge emails, reviewer comments, and weighted totals.</p>
+              </div>
+              <button className="btn-secondary btn-sm" onClick={() => downloadCsv('judging')}>
+                <Download size={14} /> Export Results CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>}
+
+    {/* ========================================================
+        Tab: Integrations (Webhooks, API & Embed Gallery)
+        ======================================================== */}
+    {tab.toLowerCase() === 'integrations' && <section className="workspace-card organizer-info-panel">
+      <div className="organizer-subnav-bar">
+        <button
+          type="button"
+          className={`subnav-pill ${integrationsSubTab === 'webhooks' ? 'active' : ''}`}
+          onClick={() => { setIntegrationsSubTab('webhooks'); loadWebhooks(); }}
+        >
+          Webhooks
+        </button>
+        <button
+          type="button"
+          className={`subnav-pill ${integrationsSubTab === 'api' ? 'active' : ''}`}
+          onClick={() => setIntegrationsSubTab('api')}
+        >
+          API Documentation
+        </button>
+        <button
+          type="button"
+          className={`subnav-pill ${integrationsSubTab === 'embed' ? 'active' : ''}`}
+          onClick={() => setIntegrationsSubTab('embed')}
+        >
+          Embed Gallery
+        </button>
+      </div>
+
+      {integrationsSubTab === 'webhooks' && (
+        <div>
+          <div className="organizer-section-heading">
+            <div>
+              <h2>Webhook Management</h2>
+              <p>Deliver real-time event notifications to external services with cryptographic HMAC-SHA256 signatures.</p>
+            </div>
+            <button className="btn-primary btn-sm" onClick={() => { setCreatedWebhookSecret(null); setWebhookModalOpen(true); }}>
+              <Plus size={14} /> Add Webhook
+            </button>
+          </div>
+
+          {createdWebhookSecret && (
+            <div className="copy-secret-banner">
+              <strong><ShieldCheck size={16} /> New Webhook Signing Secret (Copy Once):</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <code style={{ fontSize: '0.85rem' }}>{createdWebhookSecret}</code>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(createdWebhookSecret);
+                    setNotice('Webhook secret copied to clipboard.');
+                  }}
+                >
+                  <Copy size={12} /> Copy
+                </button>
+              </div>
+              <small>For security reasons, this secret cannot be viewed again after this notification is closed.</small>
+            </div>
+          )}
+
+          {testWebhookResult && (
+            <div className={`alert-box ${testWebhookResult.error ? 'error' : 'success'}`} style={{ marginBottom: '1rem' }}>
+              <span>
+                {testWebhookResult.error
+                  ? `Test ping failed: ${testWebhookResult.error}`
+                  : `Test ping dispatched to webhook (Status: ${testWebhookResult.lastDelivery?.statusCode || 200}, Event: ${testWebhookResult.lastDelivery?.event || 'test.ping'})`}
+              </span>
+            </div>
+          )}
+
+          {webhooksLoading ? (
+            <div className="empty-loading-state">Loading webhooks…</div>
+          ) : webhooks.length ? (
+            <div className="organizer-table">
+              <div className="organizer-table-head webhook-table-head">
+                <span>Webhook URL</span>
+                <span>Events</span>
+                <span>Status</span>
+                <span>Last delivery</span>
+                <span>Failures</span>
+                <span>Actions</span>
+              </div>
+              {webhooks.map((hook) => (
+                <div className="organizer-table-row webhook-table-row" key={hook._id}>
+                  <span>
+                    <code style={{ fontSize: '0.78rem' }}>{hook.targetUrl}</code>
+                    <small style={{ display: 'block', color: 'var(--text-muted)' }}>Secret: {hook.secret}</small>
+                  </span>
+                  <span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                      {hook.subscribedEvents?.map((evId) => {
+                        const evObj = WEBHOOK_EVENTS_LIST.find(e => e.id === evId);
+                        return (
+                          <span className="judging-badge badge-neutral" key={evId}>
+                            {evObj ? evObj.label : evId === '*' ? 'All Events' : evId}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </span>
+                  <span>
+                    <span className={`judging-badge ${hook.active ? 'badge-success' : 'badge-neutral'}`}>
+                      {hook.active ? 'Active' : 'Disabled'}
+                    </span>
+                  </span>
+                  <span>
+                    {hook.lastDelivery ? (
+                      <small>
+                        {dateTime(hook.lastDelivery.timestamp)} ({hook.lastDelivery.statusCode || 200})
+                      </small>
+                    ) : (
+                      <small className="text-muted">Never</small>
+                    )}
+                  </span>
+                  <span>
+                    <span className={`judging-badge ${hook.failures > 0 ? 'badge-warning' : 'badge-neutral'}`}>
+                      {hook.failures || 0}
+                    </span>
+                  </span>
+                  <span style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn-secondary btn-sm"
+                      onClick={() => handleTestWebhook(hook._id)}
+                      disabled={testingWebhookId === hook._id}
+                      title="Dispatch test ping"
+                    >
+                      <Play size={11} /> {testingWebhookId === hook._id ? 'Testing…' : 'Test'}
+                    </button>
+                    <button
+                      className="btn-secondary btn-sm"
+                      onClick={() => handleToggleWebhook(hook)}
+                      title={hook.active ? 'Disable webhook' : 'Enable webhook'}
+                    >
+                      {hook.active ? 'Disable' : 'Enable'}
+                    </button>
+                    <button
+                      className="btn-secondary btn-sm"
+                      onClick={() => setDeliveriesModalWebhook(hook)}
+                      title="View delivery history"
+                    >
+                      Deliveries
+                    </button>
+                    <button
+                      className="judge-revoke-btn"
+                      onClick={() => handleDeleteWebhook(hook._id)}
+                      title="Delete webhook"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="organizer-empty-inline">No webhooks registered yet. Click <strong>Add Webhook</strong> to connect external dispatch endpoints.</p>
+          )}
+        </div>
+      )}
+
+      {integrationsSubTab === 'api' && (
+        <div>
+          <div className="organizer-section-heading">
+            <div>
+              <h2>REST API & OpenAPI 3.0 Documentation</h2>
+              <p>Offline-ready REST endpoints conforming to the OpenAPI 3.0.3 specification.</p>
+            </div>
+            <div className="organizer-inline-actions">
+              <a
+                href="/api/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary btn-sm"
+              >
+                <ExternalLink size={14} /> Open API Docs ↗
+              </a>
+              <a
+                href="/api/openapi.json"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary btn-sm"
+              >
+                <Download size={14} /> OpenAPI JSON
+              </a>
+            </div>
+          </div>
+
+          <div className="verification-desc-box">
+            <h4>100% Offline Capability</h4>
+            <p>
+              HackHub serves complete interactive documentation directly from <code>/api/docs</code> without external CDN scripts, third-party fonts, or internet access. You can safely inspect schemas, authentication requirements, and error payloads in isolated environments.
+            </p>
+          </div>
+
+          <div className="export-card-grid">
+            <div className="export-card">
+              <div>
+                <h3>Project & Gallery Endpoints</h3>
+                <p>Query submitted projects, explore track themes, and inspect public repository entries.</p>
+                <code style={{ fontSize: '0.78rem', display: 'block', marginTop: '0.4rem' }}>GET /api/projects</code>
+                <code style={{ fontSize: '0.78rem', display: 'block', marginTop: '0.2rem' }}>GET /api/events/:id/projects</code>
+              </div>
+            </div>
+
+            <div className="export-card">
+              <div>
+                <h3>Verifiable Records & Certificates</h3>
+                <p>Retrieve cryptographically signed judging manifests and participation credentials.</p>
+                <code style={{ fontSize: '0.78rem', display: 'block', marginTop: '0.4rem' }}>GET /api/events/:id/records/judging</code>
+                <code style={{ fontSize: '0.78rem', display: 'block', marginTop: '0.2rem' }}>POST /api/events/:id/records/verify</code>
+              </div>
+            </div>
+
+            <div className="export-card">
+              <div>
+                <h3>Event Webhooks Dispatch</h3>
+                <p>Programmatically register webhook endpoints and receive signed HMAC-SHA256 payloads.</p>
+                <code style={{ fontSize: '0.78rem', display: 'block', marginTop: '0.4rem' }}>POST /api/events/:id/webhooks</code>
+                <code style={{ fontSize: '0.78rem', display: 'block', marginTop: '0.2rem' }}>GET /api/events/:id/webhooks</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {integrationsSubTab === 'embed' && (
+        <div>
+          <div className="organizer-section-heading">
+            <div>
+              <h2>Embeddable Project Gallery</h2>
+              <p>Embed a live, responsive project gallery on any external website using a standalone iframe.</p>
+            </div>
+            <button className="btn-primary btn-sm" onClick={handleCopyEmbed}>
+              <Copy size={14} /> {copiedEmbed ? 'Copied to Clipboard!' : 'Copy Embed Code'}
+            </button>
+          </div>
+
+          <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
+            Paste this HTML snippet into your external site, blog, or community portal:
+          </p>
+
+          <div className="embed-code-box">
+            {`<iframe src="${window.location.origin}/embed/gallery/${eventId}" width="100%" height="600" frameborder="0" allowtransparency="true"></iframe>`}
+          </div>
+
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            The embed endpoint is publicly accessible and contains only public project submissions, team names, and repository links. No judge identities, private scoring criteria, or session tokens are included.
+          </p>
+
+          <div style={{ marginTop: '1.25rem' }}>
+            <h3 style={{ fontSize: '0.94rem', marginBottom: '0.5rem' }}>Live Gallery Preview</h3>
+            <iframe
+              src={`/embed/gallery/${eventId}`}
+              title="Hackathon Public Gallery Preview"
+              style={{
+                width: '100%',
+                height: '420px',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                background: '#fff'
+              }}
+            />
+          </div>
+        </div>
+      )}
     </section>}
 
     {/* ========================================================
@@ -1546,6 +2453,229 @@ export default function OrganizerWorkspace({ eventId: initialEventId, initialTab
         </div>
       </div>
     )}
+
+    {/* ========================================================
+        Modal: Bulk Data Import
+        ======================================================== */}
+    {importModalOpen && (
+      <div className="organizer-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="import-modal-title">
+        <div className="organizer-modal-dialog">
+          <div className="modal-header">
+            <h3 id="import-modal-title">Bulk Import Hackathon Data</h3>
+            <button className="modal-close-btn" onClick={() => setImportModalOpen(false)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div className="verification-desc-box" style={{ margin: 0 }}>
+              <h4>Step 1: Choose JSON File</h4>
+              <p>Select a JSON file containing teams and projects to import.</p>
+              <input
+                type="file"
+                accept=".json"
+                className="form-input"
+                style={{ marginTop: '0.5rem' }}
+                onChange={handleFileSelected}
+              />
+            </div>
+
+            {importValidating && (
+              <div className="empty-loading-state">Validating records with server…</div>
+            )}
+
+            {importValidation && (
+              <div>
+                <h4 style={{ fontSize: '0.88rem', margin: '0 0 0.5rem' }}>Step 2: Validation Results</h4>
+                <div className="validation-metrics-grid">
+                  <div className="validation-metric-card">
+                    <span className="validation-metric-num">{importValidation.projectsCount}</span>
+                    <span className="validation-metric-label">Projects</span>
+                  </div>
+                  <div className="validation-metric-card">
+                    <span className="validation-metric-num">{importValidation.teamsCount}</span>
+                    <span className="validation-metric-label">Teams</span>
+                  </div>
+                  <div className="validation-metric-card">
+                    <span className={`validation-metric-num ${importValidation.errors?.length ? 'error' : ''}`}>
+                      {importValidation.errors?.length || 0}
+                    </span>
+                    <span className="validation-metric-label">Errors</span>
+                  </div>
+                </div>
+
+                {importValidation.errors?.length > 0 && (
+                  <div className="validation-error-list">
+                    <strong>Validation Failed. Database was NOT modified:</strong>
+                    <ul>
+                      {importValidation.errors.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {importValidation.valid && importValidation.errors?.length === 0 && (
+                  <div className="judging-healthy-banner" style={{ margin: '0.75rem 0' }}>
+                    <CheckCircle size={16} />
+                    <span>All records passed validation. Ready to commit transaction.</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="organizer-inline-actions" style={{ marginTop: '0.5rem' }}>
+              <button
+                className="btn-primary btn-sm"
+                disabled={!importValidation?.valid || importValidation?.errors?.length > 0 || importSubmitting}
+                onClick={handleExecuteImport}
+              >
+                {importSubmitting ? 'Importing…' : 'Import'}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setImportModalOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ========================================================
+        Modal: Add Webhook
+        ======================================================== */}
+    {webhookModalOpen && (
+      <div className="organizer-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="webhook-modal-title">
+        <div className="organizer-modal-dialog">
+          <div className="modal-header">
+            <h3 id="webhook-modal-title">Register Webhook Endpoint</h3>
+            <button className="modal-close-btn" onClick={() => setWebhookModalOpen(false)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <form onSubmit={handleCreateWebhook} style={{ display: 'grid', gap: '0.9rem' }}>
+            <label className="form-group">
+              <span className="form-label">Target URL (HTTPS / HTTP)</span>
+              <input
+                type="url"
+                className="form-input"
+                placeholder="https://api.example.com/webhooks/hackhub"
+                value={webhookForm.targetUrl}
+                onChange={(e) => setWebhookForm({ ...webhookForm, targetUrl: e.target.value })}
+                required
+              />
+            </label>
+
+            <label className="form-group">
+              <span className="form-label">Custom Secret (optional — generated automatically if blank)</span>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Leave empty for secure random generation"
+                value={webhookForm.secret}
+                onChange={(e) => setWebhookForm({ ...webhookForm, secret: e.target.value })}
+                minLength={8}
+              />
+            </label>
+
+            <div className="form-group">
+              <span className="form-label">Subscribe to Events</span>
+              <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.35rem' }}>
+                {WEBHOOK_EVENTS_LIST.map((ev) => {
+                  const isChecked = webhookForm.subscribedEvents.includes(ev.id);
+                  return (
+                    <label key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...webhookForm.subscribedEvents, ev.id]
+                            : webhookForm.subscribedEvents.filter(id => id !== ev.id);
+                          setWebhookForm({ ...webhookForm, subscribedEvents: next });
+                        }}
+                      />
+                      <span>{ev.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="organizer-inline-actions" style={{ marginTop: '0.5rem' }}>
+              <button
+                className="btn-primary btn-sm"
+                disabled={!webhookForm.targetUrl || webhookForm.subscribedEvents.length === 0}
+              >
+                Add Webhook
+              </button>
+              <button type="button" className="btn-secondary btn-sm" onClick={() => setWebhookModalOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+
+    {/* ========================================================
+        Modal: Webhook Deliveries History
+        ======================================================== */}
+    {deliveriesModalWebhook && (
+      <div className="organizer-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="deliveries-modal-title">
+        <div className="organizer-modal-dialog">
+          <div className="modal-header">
+            <h3 id="deliveries-modal-title">Webhook Delivery History</h3>
+            <button className="modal-close-btn" onClick={() => setDeliveriesModalWebhook(null)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: '0 0 0.75rem' }}>
+            Endpoint: <code>{deliveriesModalWebhook.targetUrl}</code>
+          </p>
+
+          <div className="deliveries-list">
+            {(deliveriesModalWebhook.recentDeliveries || []).length ? (
+              deliveriesModalWebhook.recentDeliveries.map((dl, idx) => (
+                <div className="delivery-item" key={idx}>
+                  <div>
+                    <span className={`judging-badge ${dl.success ? 'badge-success' : 'badge-warning'}`} style={{ marginRight: '0.5rem' }}>
+                      {dl.statusCode || (dl.success ? 200 : 500)}
+                    </span>
+                    <strong>{dl.event}</strong>
+                    {dl.error && <small style={{ display: 'block', color: '#dc2626' }}>{dl.error}</small>}
+                  </div>
+                  <small style={{ color: 'var(--text-muted)' }}>{dateTime(dl.timestamp)}</small>
+                </div>
+              ))
+            ) : (
+              <p className="organizer-empty-inline">No delivery records logged for this webhook yet.</p>
+            )}
+          </div>
+
+          <div className="organizer-inline-actions" style={{ marginTop: '1rem', justifyContent: 'flex-end' }}>
+            <button className="btn-secondary btn-sm" onClick={() => setDeliveriesModalWebhook(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    <CertificateModal
+      isOpen={certModalOpen}
+      onClose={() => setCertModalOpen(false)}
+      certificate={selectedCert}
+      eventId={eventId}
+      recipientId={selectedCert?.recipientId}
+      type={selectedCert?.type}
+    />
   </div>;
 }
 

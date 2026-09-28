@@ -143,6 +143,27 @@ describe('T4 Stretch Architecture: REST API, Webhooks, Verifiable Records, Embed
       expect(sig1).toHaveLength(7 + 64);
     });
 
+    it('allows organizer to update and toggle webhook active status', async () => {
+      const hook = await Webhook.create({
+        eventId: event._id,
+        targetUrl: 'https://webhook.example.org/events',
+        secret: 'test-secret-key-1234',
+        subscribedEvents: ['*'],
+        active: true
+      });
+
+      const toggleRes = await request(app)
+        .put(`/api/events/${event._id}/webhooks/${hook._id}`)
+        .set('Authorization', `Bearer ${orgToken}`)
+        .send({ active: false });
+
+      expect(toggleRes.status).toBe(200);
+      expect(toggleRes.body.webhook.active).toBe(false);
+
+      const updatedHook = await Webhook.findById(hook._id);
+      expect(updatedHook.active).toBe(false);
+    });
+
     it('records delivery logs and manages webhook deletion', async () => {
       const hook = await Webhook.create({
         eventId: event._id,
@@ -358,6 +379,28 @@ describe('T4 Stretch Architecture: REST API, Webhooks, Verifiable Records, Embed
       expect(res.body.errors).toBeDefined();
 
       // Database must not have been partially written
+      const currentCount = await Project.countDocuments({ eventId: event._id });
+      expect(currentCount).toBe(initialCount);
+    });
+
+    it('supports validateOnly dry-run without writing data to DB', async () => {
+      const initialCount = await Project.countDocuments({ eventId: event._id });
+
+      const res = await request(app)
+        .post(`/api/events/${event._id}/import`)
+        .set('Authorization', `Bearer ${orgToken}`)
+        .send({
+          validateOnly: true,
+          teams: [{ name: 'Dry Run Team' }],
+          projects: [{ title: 'Dry Run Project' }]
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.valid).toBe(true);
+      expect(res.body.importedTeamsCount).toBe(1);
+      expect(res.body.importedProjectsCount).toBe(1);
+
+      // Verify no records were written
       const currentCount = await Project.countDocuments({ eventId: event._id });
       expect(currentCount).toBe(initialCount);
     });

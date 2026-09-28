@@ -39,6 +39,7 @@ import {
 import {
   createWebhook,
   getWebhooks,
+  updateWebhook,
   deleteWebhook,
   testWebhook
 } from '../controllers/webhook.controller.js';
@@ -130,6 +131,8 @@ router.post('/:eventId/results/publish', ...requireStaff, publishResults);
 // Event Webhooks (T4)
 router.post('/:eventId/webhooks', ...requireStaff, createWebhook);
 router.get('/:eventId/webhooks', ...requireStaff, getWebhooks);
+router.put('/:eventId/webhooks/:webhookId', ...requireStaff, updateWebhook);
+router.patch('/:eventId/webhooks/:webhookId', ...requireStaff, updateWebhook);
 router.delete('/:eventId/webhooks/:webhookId', ...requireStaff, deleteWebhook);
 router.post('/:eventId/webhooks/:webhookId/test', ...requireStaff, testWebhook);
 

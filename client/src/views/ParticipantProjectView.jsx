@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { AlertCircle, ArrowRight, CheckCircle2, Clock, Edit3, FolderGit2, Send, Users } from 'lucide-react';
+import { AlertCircle, ArrowRight, Award, CheckCircle2, Clock, Download, Edit3, FolderGit2, Send, Users } from 'lucide-react';
 import ProjectDetailModal from '../components/ProjectDetailModal';
+import CertificateModal from '../components/CertificateModal';
 
 const getId = (value) => String(value?._id || value || '');
 const formatDeadline = (value) => value
@@ -9,7 +10,7 @@ const formatDeadline = (value) => value
   : 'To be announced';
 
 export default function ParticipantProjectView({ initialEventId = '', initialTeamId = '', onNavigate }) {
-  const { sessionToken } = useAuth();
+  const { user, sessionToken } = useAuth();
   const [events, setEvents] = useState([]);
   const [myTeams, setMyTeams] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -25,6 +26,9 @@ export default function ParticipantProjectView({ initialEventId = '', initialTea
   const [saving, setSaving] = useState(false);
   const [editingSubmittedProject, setEditingSubmittedProject] = useState(false);
   const [publicProjectOpen, setPublicProjectOpen] = useState(false);
+  const [certModalOpen, setCertModalOpen] = useState(false);
+  const [certificateData, setCertificateData] = useState(null);
+  const [certLoading, setCertLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -194,6 +198,30 @@ export default function ParticipantProjectView({ initialEventId = '', initialTea
   const projectIsSubmitted = activeProject?.status === 'submitted';
   const showProjectForm = !projectIsSubmitted || editingSubmittedProject;
 
+  const handleOpenCertificate = async () => {
+    if (!eventId || !user?._id) return;
+    setCertLoading(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/certificates/participation/${user._id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCertificateData(data);
+        setCertModalOpen(true);
+      } else {
+        setProjectMsg({ type: 'error', text: 'Certificate is not available for this project yet.' });
+      }
+    } catch {
+      setProjectMsg({ type: 'error', text: 'Failed to load certificate.' });
+    } finally {
+      setCertLoading(false);
+    }
+  };
+
+  const handleDownloadCertificate = () => {
+    if (!eventId || !user?._id) return;
+    window.open(`/api/events/${eventId}/certificates/participation/${user._id}?format=html`, '_blank');
+  };
+
   return (
     <div className="page-view-container participant-page">
       <div className="page-header-block">
@@ -248,6 +276,12 @@ export default function ParticipantProjectView({ initialEventId = '', initialTea
               <button className="btn-secondary" type="button" onClick={() => setEditingSubmittedProject(true)}>
                 <Edit3 size={14} /> Edit submission
               </button>
+              <button className="btn-secondary" type="button" onClick={handleOpenCertificate} disabled={certLoading}>
+                <Award size={14} /> View Certificate
+              </button>
+              <button className="btn-secondary" type="button" onClick={handleDownloadCertificate}>
+                <Download size={14} /> Download Certificate
+              </button>
             </div>
           </div>
         ) : (
@@ -289,6 +323,14 @@ export default function ParticipantProjectView({ initialEventId = '', initialTea
       </section>
 
       <ProjectDetailModal project={activeProject} isOpen={publicProjectOpen} onClose={() => setPublicProjectOpen(false)} />
+      <CertificateModal
+        isOpen={certModalOpen}
+        onClose={() => setCertModalOpen(false)}
+        certificate={certificateData}
+        eventId={eventId}
+        recipientId={user?._id}
+        type="participation"
+      />
     </div>
   );
 }

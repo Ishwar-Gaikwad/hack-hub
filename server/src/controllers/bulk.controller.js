@@ -62,6 +62,17 @@ export async function bulkImport(req, res) {
       });
     }
 
+    // Step 2b: Dry run validation only check
+    if (req.body.validateOnly) {
+      return res.status(200).json({
+        valid: true,
+        message: 'Import validation passed',
+        importedTeamsCount: teams.length,
+        importedProjectsCount: projects.length,
+        errors: []
+      });
+    }
+
     // Step 3: Transactional creation
     const createdTeams = [];
     const teamNameToDocMap = new Map();

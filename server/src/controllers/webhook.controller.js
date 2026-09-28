@@ -74,6 +74,48 @@ export async function createWebhook(req, res) {
   }
 }
 
+export async function updateWebhook(req, res) {
+  const { eventId, webhookId } = req.params;
+  const { active, targetUrl, subscribedEvents } = req.body;
+
+  try {
+    const webhook = await Webhook.findOne({ _id: webhookId, eventId });
+    if (!webhook) {
+      return res.status(404).json({ error: 'WebhookNotFound', message: 'Webhook not found' });
+    }
+
+    if (typeof active === 'boolean') webhook.active = active;
+    if (targetUrl) webhook.targetUrl = targetUrl;
+    if (Array.isArray(subscribedEvents)) webhook.subscribedEvents = subscribedEvents;
+
+    await webhook.save();
+
+    await AuditLog.create({
+      action: 'webhook.updated',
+      actorId: req.user._id,
+      eventId,
+      metadata: { webhookId, active: webhook.active, targetUrl: webhook.targetUrl },
+      ip: String(req.ip || '127.0.0.1')
+    });
+
+    return res.status(200).json({
+      message: 'Webhook updated successfully',
+      webhook: {
+        _id: webhook._id,
+        eventId: webhook.eventId,
+        targetUrl: webhook.targetUrl,
+        secret: `${webhook.secret.substring(0, 4)}••••••••`,
+        subscribedEvents: webhook.subscribedEvents,
+        active: webhook.active,
+        createdAt: webhook.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('[Webhook Controller] Error updating webhook:', error);
+    return res.status(500).json({ error: 'InternalServerError', message: 'Failed to update webhook' });
+  }
+}
+
 /**
  * List webhooks for an event (Organizer/Admin only)
  * GET /api/events/:eventId/webhooks
@@ -90,11 +132,13 @@ export async function getWebhooks(req, res) {
         _id: h._id,
         eventId: h.eventId,
         targetUrl: h.targetUrl,
-        secret: h.secret,
+        secret: h.secret ? `${h.secret.substring(0, 4)}••••••••` : '••••••••',
         subscribedEvents: h.subscribedEvents,
         active: h.active,
         deliveryCount: h.deliveryLogs.length,
-        recentDeliveries: h.deliveryLogs.slice(-5),
+        failures: h.deliveryLogs.filter(d => !d.success).length,
+        lastDelivery: h.deliveryLogs[h.deliveryLogs.length - 1] || null,
+        recentDeliveries: h.deliveryLogs.slice(-10),
         createdAt: h.createdAt
       }))
     });
@@ -174,6 +218,7 @@ export async function testWebhook(req, res) {
 export default {
   createWebhook,
   getWebhooks,
+  updateWebhook,
   deleteWebhook,
   testWebhook
 };
