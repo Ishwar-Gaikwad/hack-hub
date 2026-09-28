@@ -1,533 +1,76 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Calendar, PlusCircle, Tag, Award, CheckCircle2, AlertCircle, Clock, ThumbsUp, BarChart3, ShieldAlert } from 'lucide-react';
+import { CalendarDays, Plus, ArrowUpRight } from 'lucide-react';
 
-export default function OrganizerDashboard({ onOpenAuth }) {
-  const { currentUser, sessionToken } = useAuth();
+const eventOwnerId = (event) => String(event.createdBy?._id || event.createdBy || '');
+const userId = (user) => String(user?._id || user?.id || '');
+const eventDate = (value) => value ? new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date pending';
+
+export default function OrganizerDashboard({ onNavigate }) {
+  const { currentUser } = useAuth();
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState('');
-  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // New Event form
-  const [eventName, setEventName] = useState('');
-  const [eventDesc, setEventDesc] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [submissionDeadline, setSubmissionDeadline] = useState('');
-  const [endDate, setEndDate] = useState('');
-
-  // Track & Prize form
-  const [trackName, setTrackName] = useState('');
-  const [trackDesc, setTrackDesc] = useState('');
-  const [prizeName, setPrizeName] = useState('');
-  const [prizeValue, setPrizeValue] = useState('');
-  const [prizeDesc, setPrizeDesc] = useState('');
-
-  // Community Voting Configuration (T3)
-  const [votingOpenAt, setVotingOpenAt] = useState('');
-  const [votingCloseAt, setVotingCloseAt] = useState('');
-  const [metrics, setMetrics] = useState(null);
-  const [votingMsg, setVotingMsg] = useState(null);
-
-  // Messages & Loading
-  const [eventMsg, setEventMsg] = useState(null);
-  const [trackMsg, setTrackMsg] = useState(null);
-  const [prizeMsg, setPrizeMsg] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchEvents = async () => {
-    try {
-      const res = await fetch('/api/events');
-      if (res.ok) {
-        const data = await res.json();
-        setEvents(data.events || []);
-        if (data.events?.length > 0 && !selectedEventId) {
-          setSelectedEventId(data.events[0]._id);
-          fetchEventDetails(data.events[0]._id);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const fetchEventDetails = async (eventId) => {
-    if (!eventId) return;
-    try {
-      const res = await fetch(`/api/events/${eventId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedEvent(data.event);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const fetchMetrics = async (eventId) => {
-    if (!eventId || !sessionToken) return;
-    try {
-      const res = await fetch(`/api/events/${eventId}/metrics`, {
-        headers: { Authorization: `Bearer ${sessionToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMetrics(data);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    fetchEvents();
-  }, []);
-
-  useEffect(() => {
-    if (selectedEventId) {
-      fetchEventDetails(selectedEventId);
-      fetchMetrics(selectedEventId);
-    }
-  }, [selectedEventId, sessionToken]);
-
-  const handleConfigureVoting = async (e) => {
-    e.preventDefault();
-    if (!selectedEventId || !sessionToken) return;
-    setVotingMsg(null);
-    try {
-      const res = await fetch(`/api/events/${selectedEventId}/voting`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionToken}`
-        },
-        body: JSON.stringify({
-          votingOpenAt: votingOpenAt || null,
-          votingCloseAt: votingCloseAt || null
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setVotingMsg({ type: 'success', text: 'Voting window configured successfully!' });
-        fetchEventDetails(selectedEventId);
-        fetchMetrics(selectedEventId);
-      } else {
-        setVotingMsg({ type: 'error', text: data.message || 'Failed to update voting window' });
-      }
-    } catch {
-      setVotingMsg({ type: 'error', text: 'Network error configuring voting window' });
-    }
-  };
-
-  if (!currentUser || (currentUser.role !== 'organizer' && currentUser.role !== 'admin')) {
-    return (
-      <div className="empty-state-card" style={{ padding: '3.5rem 1.5rem' }}>
-        <Calendar size={48} color="var(--text-muted)" />
-        <h2>Organizer Authorization Required</h2>
-        <p>You must be signed in with an Organizer or Admin account to create and manage hackathons.</p>
-        <button className="btn-primary" onClick={() => onOpenAuth('login')} style={{ marginTop: '1rem' }}>
-          Sign In as Organizer
-        </button>
-      </div>
-    );
-  }
-
-  // Create Event
-  const handleCreateEvent = async (e) => {
-    e.preventDefault();
-    setEventMsg(null);
+  const loadEvents = useCallback(async () => {
     setLoading(true);
-
+    setError('');
     try {
-      const res = await fetch('/api/events', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionToken}`
-        },
-        body: JSON.stringify({
-          name: eventName.trim(),
-          description: eventDesc.trim(),
-          startDate: new Date(startDate).toISOString(),
-          submissionDeadline: new Date(submissionDeadline).toISOString(),
-          endDate: new Date(endDate).toISOString(),
-          status: 'published'
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setEventMsg({ type: 'success', text: `Event "${data.event.name}" published successfully!` });
-        setEventName('');
-        setEventDesc('');
-        setStartDate('');
-        setSubmissionDeadline('');
-        setEndDate('');
-        fetchEvents();
-        setSelectedEventId(data.event._id);
-      } else {
-        setEventMsg({ type: 'error', text: data.message || data.error });
-      }
+      const response = await fetch('/api/events');
+      const data = response.ok ? await response.json() : null;
+      if (!response.ok) throw new Error(data?.message || 'Could not load your hackathons.');
+      const ownerId = userId(currentUser);
+      const hostedEvents = (data.events || []).filter((event) => eventOwnerId(event) === ownerId);
+      const enrichedEvents = await Promise.all(hostedEvents.map(async (event) => {
+        try {
+          const [detailsResponse, projectsResponse] = await Promise.all([
+            fetch(`/api/events/${event._id}`),
+            fetch(`/api/events/${event._id}/projects`)
+          ]);
+          const [details, submitted] = await Promise.all([
+            detailsResponse.ok ? detailsResponse.json() : Promise.resolve({}),
+            projectsResponse.ok ? projectsResponse.json() : Promise.resolve({ projects: [] })
+          ]);
+          return { ...event, trackCount: details.event?.tracks?.length ?? null, prizeCount: details.event?.prizes?.length ?? null, submissionCount: submitted.projects?.length ?? null };
+        } catch {
+          return { ...event, trackCount: null, prizeCount: null, submissionCount: null };
+        }
+      }));
+      setEvents(enrichedEvents);
     } catch (err) {
-      setEventMsg({ type: 'error', text: err.message });
+      setError(err.message || 'Could not load your hackathons.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser]);
 
-  // Create Track
-  const handleCreateTrack = async (e) => {
-    e.preventDefault();
-    setTrackMsg(null);
-    if (!selectedEventId || !trackName.trim()) return;
-
-    try {
-      const res = await fetch(`/api/events/${selectedEventId}/tracks`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionToken}`
-        },
-        body: JSON.stringify({
-          name: trackName.trim(),
-          description: trackDesc.trim()
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setTrackMsg({ type: 'success', text: `Track "${data.track.name}" created!` });
-        setTrackName('');
-        setTrackDesc('');
-        fetchEventDetails(selectedEventId);
-      } else {
-        setTrackMsg({ type: 'error', text: data.message || data.error });
-      }
-    } catch (err) {
-      setTrackMsg({ type: 'error', text: err.message });
-    }
-  };
-
-  // Create Prize
-  const handleCreatePrize = async (e) => {
-    e.preventDefault();
-    setPrizeMsg(null);
-    if (!selectedEventId || !prizeName.trim()) return;
-
-    try {
-      const res = await fetch(`/api/events/${selectedEventId}/prizes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionToken}`
-        },
-        body: JSON.stringify({
-          name: prizeName.trim(),
-          value: prizeValue.trim(),
-          description: prizeDesc.trim()
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setPrizeMsg({ type: 'success', text: `Prize "${data.prize.name}" created!` });
-        setPrizeName('');
-        setPrizeValue('');
-        setPrizeDesc('');
-        fetchEventDetails(selectedEventId);
-      } else {
-        setPrizeMsg({ type: 'error', text: data.message || data.error });
-      }
-    } catch (err) {
-      setPrizeMsg({ type: 'error', text: err.message });
-    }
-  };
+  useEffect(() => { loadEvents(); }, [loadEvents]);
+  const needsAttention = events.filter((event) => {
+    const deadline = new Date(event.submissionDeadline).getTime();
+    const deadlineSoon = Number.isFinite(deadline) && deadline > Date.now() && deadline - Date.now() < 7 * 86400000;
+    return event.trackCount === 0 || event.prizeCount === 0 || deadlineSoon;
+  });
 
   return (
-    <div className="page-view-container">
-      <div className="page-header-block">
-        <div className="page-title-group">
-          <h1 className="page-title">Organizer Hub</h1>
-          <p className="page-description">
-            Create and configure hackathon timelines, define competition tracks, and announce prize structures with automated deadline enforcement.
-          </p>
-        </div>
-      </div>
+    <div className="page-view-container organizer-landing">
+      <header className="organizer-landing-header">
+        <div><p className="organizer-eyebrow">Organizer</p><h1 className="page-title">Your Hackathons</h1><p className="page-description">Welcome{currentUser?.email ? `, ${currentUser.email}` : ''}. Manage the events you host.</p></div>
+        <div className="organizer-header-actions"><button className="btn-primary" onClick={() => onNavigate('my-events', { create: true })}><Plus size={16} /> Create Hackathon</button></div>
+      </header>
 
-      <div className="workspace-layout">
-        {/* Create New Event */}
-        <div className="workspace-card">
-          <div className="card-header-styled">
-            <PlusCircle size={20} color="#f59e0b" />
-            <h2 className="card-heading">1. Create New Hackathon</h2>
-          </div>
-
-          {eventMsg && (
-            <div className={`alert-box ${eventMsg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: '1rem' }}>
-              {eventMsg.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-              <span>{eventMsg.text}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleCreateEvent} className="form-group-block">
-            <div className="form-group">
-              <label className="form-label">Event Name</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. AI Innovation Challenge 2026"
-                value={eventName}
-                onChange={(e) => setEventName(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Event Description</label>
-              <textarea
-                className="form-input form-textarea"
-                rows={3}
-                placeholder="Detailed objectives, criteria, and themes..."
-                value={eventDesc}
-                onChange={(e) => setEventDesc(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Event Start Date & Time</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ color: '#ec4899', fontWeight: 600 }}>
-                Submission Deadline (Strict Server Enforcement)
-              </label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={submissionDeadline}
-                onChange={(e) => setSubmissionDeadline(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Event End Date & Time</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                required
-              />
-            </div>
-
-            <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-              <PlusCircle size={16} /> Publish Hackathon Event
-            </button>
-          </form>
-        </div>
-
-        {/* Tracks & Prizes Management */}
-        <div className="workspace-card">
-          <div className="card-header-styled">
-            <Tag size={20} color="#a855f7" />
-            <h2 className="card-heading">2. Tracks & Prizes Management</h2>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-            <label className="form-label">Select Active Event to Manage</label>
-            <select
-              className="form-input form-select"
-              value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-            >
-              {events.map((evt) => (
-                <option key={evt._id} value={evt._id}>{evt.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Add Track Form */}
-          <form onSubmit={handleCreateTrack} className="form-group-block" style={{ marginBottom: '1.5rem' }}>
-            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Tag size={14} color="#a855f7" /> Add Competition Track
-            </label>
-            {trackMsg && (
-              <div className={`alert-box ${trackMsg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: '0.5rem' }}>
-                <span>{trackMsg.text}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Track Name (e.g. Autonomous Agents)"
-                value={trackName}
-                onChange={(e) => setTrackName(e.target.value)}
-                required
-              />
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Track Description..."
-                value={trackDesc}
-                onChange={(e) => setTrackDesc(e.target.value)}
-              />
-              <button type="submit" className="btn-secondary btn-sm" style={{ alignSelf: 'flex-start' }}>
-                Add Track
-              </button>
-            </div>
-          </form>
-
-          {/* Add Prize Form */}
-          <form onSubmit={handleCreatePrize} className="form-group-block">
-            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Award size={14} color="#f59e0b" /> Add Event Prize
-            </label>
-            {prizeMsg && (
-              <div className={`alert-box ${prizeMsg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: '0.5rem' }}>
-                <span>{prizeMsg.text}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Prize Title (e.g. 1st Place)"
-                  value={prizeName}
-                  onChange={(e) => setPrizeName(e.target.value)}
-                  style={{ flex: 2 }}
-                  required
-                />
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Value (e.g. $10,000)"
-                  value={prizeValue}
-                  onChange={(e) => setPrizeValue(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-              </div>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Prize Description..."
-                value={prizeDesc}
-                onChange={(e) => setPrizeDesc(e.target.value)}
-              />
-              <button type="submit" className="btn-secondary btn-sm" style={{ alignSelf: 'flex-start' }}>
-                Add Prize
-              </button>
-            </div>
-          </form>
-
-          {/* Community Voting Window Configuration (T3) */}
-          <form onSubmit={handleConfigureVoting} className="form-group-block" style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-subtle)' }}>
-            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <ThumbsUp size={14} color="#6366f1" /> Configure Community Voting Window
-            </label>
-            {votingMsg && (
-              <div className={`alert-box ${votingMsg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: '0.5rem' }}>
-                <span>{votingMsg.text}</span>
-              </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <div>
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>Voting Opens At</label>
-                <input
-                  type="datetime-local"
-                  className="form-input"
-                  value={votingOpenAt}
-                  onChange={(e) => setVotingOpenAt(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>Voting Closes At</label>
-                <input
-                  type="datetime-local"
-                  className="form-input"
-                  value={votingCloseAt}
-                  onChange={(e) => setVotingCloseAt(e.target.value)}
-                />
-              </div>
-            </div>
-            <button type="submit" className="btn-secondary btn-sm">
-              Save Voting Window
-            </button>
-          </form>
-
-          {/* Participation & Abuse Protection Metrics (T3.11/T3.12) */}
-          {metrics && (
-            <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-subtle)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '0.75rem' }}>
-                <BarChart3 size={15} color="#818cf8" />
-                <span>Participation & Security Metrics</span>
-              </div>
-
-              <div className="metrics-grid">
-                <div className="metric-card">
-                  <div className="metric-label">Submitted Projects</div>
-                  <div className="metric-value">{metrics.participation?.submittedProjects || 0}</div>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-label">Community Votes</div>
-                  <div className="metric-value">{metrics.participation?.totalVotes || 0}</div>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-label">Unique Voters</div>
-                  <div className="metric-value">{metrics.participation?.uniqueVoters || 0}</div>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-label">Total Comments</div>
-                  <div className="metric-value">{metrics.participation?.totalComments || 0}</div>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f87171' }}>
-                    <ShieldAlert size={12} /> Duplicate Blocked
-                  </div>
-                  <div className="metric-value" style={{ color: '#f87171' }}>{metrics.security?.duplicateVoteAttempts || 0}</div>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fbbf24' }}>
-                    <ShieldAlert size={12} /> Rate Limit Triggers
-                  </div>
-                  <div className="metric-value" style={{ color: '#fbbf24' }}>{metrics.security?.rateLimitTriggers || 0}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Current Event Summary */}
-          {selectedEvent && (
-            <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                Configured Tracks ({selectedEvent.tracks?.length || 0}) & Prizes ({selectedEvent.prizes?.length || 0})
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {selectedEvent.tracks?.map((tr) => (
-                  <span key={tr._id} className="badge-tag" style={{ color: '#a855f7' }}>
-                    Track: {tr.name}
-                  </span>
-                ))}
-                {selectedEvent.prizes?.map((pz) => (
-                  <span key={pz._id} className="badge-tag" style={{ color: '#f59e0b' }}>
-                    Prize: {pz.name} ({pz.value})
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {error && <div className="event-date-error" role="alert">{error} <button className="text-button" onClick={loadEvents}>Try again</button></div>}
+      {loading ? <div className="empty-loading-state">Loading your hackathons…</div> : events.length ? (
+        <section className="hosted-events" aria-label="Hackathons you host">
+          {events.map((event) => <article className="hosted-event-card" key={event._id}>
+            <div className="hosted-event-card-top"><span className={`organizer-status status-${event.status}`}>{event.status}</span><span className="hosted-event-date"><CalendarDays size={14} /> Starts {eventDate(event.startDate)}</span></div>
+            <h2>{event.name}</h2>
+            {event.description && <p>{event.description}</p>}
+            <dl className="hosted-event-meta"><dt>Submission deadline</dt><dd>{eventDate(event.submissionDeadline)}</dd><dt>Ends</dt><dd>{eventDate(event.endDate)}</dd><dt>Tracks</dt><dd>{event.trackCount ?? 'Unavailable'}</dd><dt>Submissions</dt><dd>{event.submissionCount ?? 'Unavailable'}</dd></dl>
+            <div className="hosted-event-footer"><button className="text-button" onClick={() => onNavigate('event-workspace', { eventId: event._id })}>Manage <ArrowUpRight size={14} /></button></div>
+          </article>)}
+        </section>
+      ) : <section className="organizer-first-event"><h2>No hackathons yet</h2><p>Create your first hackathon to get started.</p></section>}
+      {!loading && needsAttention.length > 0 && <section className="organizer-attention"><h2>Needs attention</h2>{needsAttention.map((event) => { const setupIncomplete = event.trackCount === 0 || event.prizeCount === 0; return <button key={event._id} onClick={() => onNavigate('event-workspace', { eventId: event._id, tab: setupIncomplete ? 'settings' : 'submissions' })}><span><strong>{event.name}</strong><small>{setupIncomplete ? 'Event setup is incomplete' : 'Submission deadline is approaching'}</small></span><ArrowUpRight size={15} /></button>; })}</section>}
     </div>
   );
 }

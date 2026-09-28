@@ -8,11 +8,12 @@ import HomeView from './views/HomeView';
 import EventsView from './views/EventsView';
 import ProjectsView from './views/ProjectsView';
 import ParticipantDashboard from './views/ParticipantDashboard';
+import OrganizerDashboard from './views/OrganizerDashboard';
 import ParticipantTeamView from './views/ParticipantTeamView';
 import ParticipantProjectView from './views/ParticipantProjectView';
 import AccountView from './views/AccountView';
 import OrganizerEventsView from './views/OrganizerEventsView';
-import OrganizerSubmissionsView from './views/OrganizerSubmissionsView';
+import OrganizerWorkspace from './views/OrganizerWorkspace';
 import AdminView from './views/AdminView';
 import DeveloperDiagnosticsView from './views/DeveloperDiagnosticsView';
 import PlaceholderView from './views/PlaceholderView';
@@ -20,9 +21,18 @@ import PlaceholderView from './views/PlaceholderView';
 const ROLE_VIEWS = {
   participant: ['dashboard', 'my-team', 'my-project', 'account'],
   judge: ['assigned-projects', 'reviews', 'account'],
-  organizer: ['my-events', 'submissions', 'judges', 'judging', 'results', 'account'],
+  organizer: ['dashboard', 'my-events', 'event-workspace', 'submissions', 'judges', 'judging', 'results', 'account'],
   admin: ['admin-system', 'developer', 'account']
 };
+
+function routeFromHash() {
+  const hash = window.location.hash.replace('#', '').toLowerCase();
+  const workspaceRoute = hash.match(/^event-workspace\/([^/]+)(?:\/([^/]+))?$/);
+  if (workspaceRoute) return { view: 'event-workspace', eventId: workspaceRoute[1], tab: workspaceRoute[2] || 'overview' };
+  if (hash === 'events') return { view: 'hackathons' };
+  if (hash === 'admin/developer' || hash === 'diagnostics') return { view: 'developer' };
+  return { view: hash || 'home' };
+}
 
 function AppContent() {
   const { currentUser, loading } = useAuth();
@@ -34,7 +44,7 @@ function AppContent() {
       case 'judge':
         return 'assigned-projects';
       case 'organizer':
-        return 'my-events';
+        return 'dashboard';
       case 'admin':
         return 'admin-system';
       default:
@@ -43,12 +53,8 @@ function AppContent() {
   };
 
   const getInitialView = () => {
-    const hash = window.location.hash.replace('#', '').toLowerCase();
-    if (hash) {
-      if (hash === 'events') return 'hackathons';
-      if (hash === 'admin/developer' || hash === 'diagnostics') return 'developer';
-      return hash;
-    }
+    const route = routeFromHash();
+    if (route.view !== 'home') return route.view;
     return currentUser ? getDefaultViewForRole(currentUser.role) : 'home';
   };
 
@@ -56,18 +62,17 @@ function AppContent() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState('login');
   const [authModalInitialRole, setAuthModalInitialRole] = useState('participant');
-  const [participantContext, setParticipantContext] = useState({});
+  const [participantContext, setParticipantContext] = useState(() => {
+    const route = routeFromHash();
+    return route.view === 'event-workspace' ? { eventId: route.eventId, tab: route.tab } : {};
+  });
   const previousUser = useRef(null);
 
   // Sync hash routing
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '').toLowerCase();
-      if (hash) {
-        if (hash === 'events') setActiveView('hackathons');
-        else if (hash === 'admin/developer' || hash === 'diagnostics') setActiveView('developer');
-        else setActiveView(hash);
-      }
+      const route = routeFromHash();
+      if (route.view) setActiveView(route.view);
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
@@ -103,7 +108,11 @@ function AppContent() {
   const navigateTo = (view, context = {}) => {
     setParticipantContext(context);
     setActiveView(view);
-    window.location.hash = view === 'home' ? '' : view;
+    window.location.hash = view === 'home'
+      ? ''
+      : view === 'event-workspace' && context.eventId
+        ? `event-workspace/${context.eventId}/${context.tab || 'overview'}`
+        : view;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -146,7 +155,7 @@ function AppContent() {
         )}
 
         {/* Participant Views */}
-        {visibleView === 'dashboard' && (
+        {visibleView === 'dashboard' && currentUser?.role === 'participant' && (
           <ParticipantDashboard onNavigate={navigateTo} />
         )}
         {visibleView === 'my-team' && (
@@ -178,28 +187,18 @@ function AppContent() {
         )}
 
         {/* Organizer Views */}
-        {visibleView === 'my-events' && (
-          <OrganizerEventsView />
+        {visibleView === 'dashboard' && currentUser?.role === 'organizer' && (
+          <OrganizerDashboard onNavigate={navigateTo} />
         )}
-        {visibleView === 'submissions' && (
-          <OrganizerSubmissionsView />
+        {visibleView === 'my-events' && currentUser?.role === 'organizer' && (
+          <OrganizerEventsView onNavigate={navigateTo} startCreate={Boolean(participantContext.create)} />
         )}
-        {visibleView === 'judges' && (
-          <PlaceholderView
-            title="Judges Management"
-            description="Invite judges and assign evaluation quotas."
-          />
-        )}
-        {visibleView === 'judging' && (
-          <PlaceholderView
-            title="Judging Progress"
-            description="Track review status and score completion across tracks."
-          />
-        )}
-        {visibleView === 'results' && (
-          <PlaceholderView
-            title="Results & Winners"
-            description="Calculated score averages and winner selection."
+        {['event-workspace', 'submissions', 'judges', 'judging', 'results'].includes(visibleView) && currentUser?.role === 'organizer' && (
+          <OrganizerWorkspace
+            eventId={routeFromHash().eventId || participantContext.eventId}
+            initialTab={routeFromHash().tab || (['submissions', 'judges', 'judging', 'results'].includes(visibleView) ? visibleView : participantContext.tab || 'overview')}
+            initialNotice={participantContext.notice}
+            onNavigate={navigateTo}
           />
         )}
 
@@ -221,10 +220,10 @@ function AppContent() {
       <footer className="minimal-footer">
         <div className="footer-content">
           <span>&copy; 2026 HackHub Platform</span>
-          <div className="footer-links">
+          {currentUser?.role !== 'organizer' && <div className="footer-links">
             <button className="footer-link-btn" onClick={() => navigateTo('hackathons')}>Hackathons</button>
             <button className="footer-link-btn" onClick={() => navigateTo('projects')}>Projects</button>
-          </div>
+          </div>}
         </div>
       </footer>
 

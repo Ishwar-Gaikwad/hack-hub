@@ -32,11 +32,8 @@ export default function Navbar({ activeView, setActiveView, onOpenAuth }) {
         ];
       case 'organizer':
         return [
-          { id: 'my-events', label: 'My Events' },
-          { id: 'submissions', label: 'Submissions' },
-          { id: 'judges', label: 'Judges' },
-          { id: 'judging', label: 'Judging' },
-          { id: 'results', label: 'Results' },
+          { id: 'dashboard', label: 'Dashboard' },
+          { id: 'my-events', label: 'My Hackathons' },
           { id: 'account', label: 'Account' }
         ];
       case 'admin':
